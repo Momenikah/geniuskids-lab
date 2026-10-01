@@ -1,0 +1,116 @@
+# Genius Kids Lab — Supabase
+
+Aplikasi pendamping 100 eksperimen sains berbahasa Indonesia. Akun, password, konfirmasi email, dan pemulihan akun menggunakan **Supabase Auth**. Backend Node.js menghubungkan antarmuka dengan Supabase dan membatasi operasi admin. Profil anak, progres, jurnal, dan foto kini tersinkron antarperangkat dalam akun yang sama. Tidak perlu koneksi PostgreSQL langsung atau SMTP di aplikasi.
+
+## Konfigurasi Supabase
+
+1. Buat project Supabase, lalu salin Project URL dan API keys dari Dashboard ke `.env` berdasarkan `.env.example`:
+
+   ```bash
+   npm ci
+   cp .env.example .env
+   ```
+
+   Isi `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, dan `APP_URL` (lokal: `http://localhost:5173`). Pasangan key legacy `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` juga didukung. Secret/service-role key hanya berada di server; jangan masukkan ke JavaScript frontend atau repository.
+
+2. Buka **SQL Editor**, jalankan kedua migrasi secara berurutan: [`20261001000000_auth.sql`](supabase/migrations/20261001000000_auth.sql), lalu [`20261001010000_family_sync.sql`](supabase/migrations/20261001010000_family_sync.sql). Jika migrasi Auth sudah pernah dijalankan, cukup jalankan migrasi family sync yang baru. Alternatif untuk project yang sudah terhubung ke Supabase CLI: `supabase db push`. SQL dapat dijalankan ulang dan tidak menghapus tabel dari implementasi sebelumnya.
+
+   Migrasi menambahkan tabel internal dengan RLS, fungsi pencarian pengguna dan rate limit yang hanya dapat dipanggil service role, izin sesi aplikasi, serta trigger proteksi admin terakhir. Akun tetap berada di `auth.users` yang dikelola Supabase; tidak ada tabel password aplikasi.
+
+3. Di **Authentication → Providers / Sign In**, aktifkan Email. Sebaiknya aktifkan **Confirm email**. UI mendukung baik konfirmasi wajib maupun pendaftaran yang langsung menghasilkan sesi. Atur minimum panjang password Supabase ke **12** agar batas yang sama berlaku juga pada request langsung ke Supabase.
+
+4. Di **Authentication → URL Configuration**, atur **Site URL** sama dengan `APP_URL`, tanpa path/hash. Tambahkan origin lokal dan domain deployment ke **Redirect URLs**. Untuk production gunakan HTTPS. Preview Vercel membutuhkan `APP_URL` dan Redirect URL yang sesuai domain preview.
+
+5. Di **Authentication → Email Templates**, gunakan tautan berikut. **Langkah ini wajib**: aplikasi memakai TokenHash, bukan callback OAuth/implicit bawaan.
+
+   **Confirm signup**:
+
+   ```html
+   <h2>Selamat datang di Genius Kids Lab</h2>
+   <p><a href="{{ .RedirectTo }}/#auth-confirm/email/{{ .TokenHash }}">Konfirmasi email Anda</a></p>
+   ```
+
+   **Reset password**:
+
+   ```html
+   <h2>Reset password Genius Kids Lab</h2>
+   <p><a href="{{ .RedirectTo }}/#auth-confirm/recovery/{{ .TokenHash }}">Atur ulang password</a></p>
+   ```
+
+   API selalu mengisi `RedirectTo` dengan origin dari `APP_URL`. Pengguna menekan tombol konfirmasi di aplikasi sebelum token ditukarkan; ini juga mengurangi risiko pemindai email otomatis menghabiskan tautan. Atur masa berlaku OTP/email di pengaturan Supabase, misalnya 1.800 detik.
+
+6. Untuk email sungguhan, konfigurasi **Custom SMTP di Dashboard Supabase** dan verifikasi domain pengirim. Layanan email bawaan memiliki batas pengiriman/penerima; jangan mengandalkannya untuk semua pengguna production. Sesuaikan rate limit Supabase untuk trafik melalui backend bersama. Aplikasi juga memiliki rate limit per IP/email yang disimpan di Supabase.
+
+Dokumentasi acuan: [email templates Supabase](https://supabase.com/docs/guides/auth/auth-email-templates), [pengelolaan sesi](https://supabase.com/docs/guides/auth/sessions), dan [Admin API](https://supabase.com/docs/reference/javascript/auth-admin-updateuserbyid).
+
+## Buat admin dan jalankan
+
+Isi `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` di `.env`. Gunakan email baru dan password unik 12–128 karakter:
+
+```bash
+npm run admin:create
+npm run dev
+```
+
+Buka http://localhost:5173. Hapus `ADMIN_PASSWORD` dari `.env` setelah selesai. Bootstrap membuat akun Supabase dengan email terkonfirmasi dan `app_metadata.gkl_role=admin`. Email yang sudah ada tidak ditimpa. Akun pertama yang mendaftar sendiri tidak otomatis menjadi admin.
+
+Node.js 22+ diperlukan. Untuk hasil build:
+
+```bash
+npm run build
+npm start
+```
+
+## Deploy Vercel
+
+- Framework **Other**, build command `npm run build`, output directory `dist`.
+- Isi environment `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `APP_URL` di Vercel. Tidak perlu `DATABASE_URL` atau environment SMTP lama.
+- Jalankan SQL, konfigurasi Auth/email templates, dan bootstrap admin sebelum pengujian.
+- Backend `api/index.js` menerima `/api/*` melalui rewrite. Service worker tidak menyimpan API; respons API menggunakan `no-store`.
+- Periksa login, email konfirmasi/reset sungguhan, cookie, dan admin pada domain deployment.
+
+## Akun dan admin
+
+Halaman `/#login`, `/#register`, `/#forgot-password`, `/#reset-password`, dan `/#admin` tersedia. Admin dapat mencari pengguna dengan pagination, membuat akun, mengubah nama/email/peran, menonaktifkan/mengaktifkan, serta menghapus akun setelah konfirmasi. Akun yang dibuat admin langsung terkonfirmasi; admin bertanggung jawab menyerahkan password awal kepada pemilik akun.
+
+Peran aplikasi dibaca dari **app_metadata.gkl_role** yang hanya dapat diubah oleh server tepercaya, bukan `user_metadata`. API memverifikasi pengguna melalui Supabase Auth pada setiap request yang membutuhkan akun, kemudian memeriksa izin sesi di database. Sesi Supabase menggunakan cookie HttpOnly, SameSite=Lax, dan Secure pada HTTPS/production. Refresh token dikelola SDK di server; token dan secret tidak dikirim melalui JSON API ke frontend.
+
+Trigger database mencabut izin sesi aplikasi saat password/email/peran/status berubah; akun tidak memperoleh kembali akses dari sesi lama ketika diaktifkan ulang. Supabase mengelola token Auth, dan perubahan izin ini berlaku untuk API aplikasi. Admin tidak dapat menghapus/menonaktifkan/menurunkan peran sendiri. Trigger juga menolak penghapusan admin aktif terakhir, termasuk lewat Supabase Dashboard; buat admin pengganti sebelum menghapusnya. Tabel internal memiliki RLS tanpa akses pengguna biasa, dan RPC hanya diberikan ke service role.
+
+## Sinkronisasi profil, progres, jurnal, dan foto
+
+Masuk dengan akun yang sama pada perangkat kedua. Data akan diunduh dari Supabase saat aplikasi dibuka. Setiap perubahan disimpan lokal dahulu dan dikirim otomatis setelah jeda singkat; status **✓ Tersinkron ke akun** berarti server telah mengakui versi tersebut. Klik ikon sinkronisasi di header untuk melihat status, waktu terakhir tersimpan, mengunduh cadangan, atau **Sinkronkan sekarang**.
+
+- Yang ikut disinkronkan: maksimal lima profil anak (nama/usia), checklist bahan/langkah, persetujuan keamanan, status misi/lencana, isi jurnal, hasil percobaan, serta foto terkompresi. Profil yang sedang dipilih tetap mengikuti perangkat.
+- Perangkat mengambil perubahan saat dibuka, kembali fokus/online, dan setiap 30 detik ketika halaman aktif. Ini memakai pemeriksaan berkala, bukan Supabase Realtime. Form yang sedang diedit tidak diganti oleh hasil refresh.
+- Jika internet terputus saat aplikasi sudah terbuka, perubahan disimpan dalam antrean lokal dan dicoba lagi otomatis saat online. Draf yang sudah disimpan tetap ada setelah reload; pembukaan ulang/login membutuhkan internet untuk verifikasi sesi. Tunggu status tersinkron sebelum pindah perangkat atau membersihkan data browser.
+- Jika dua perangkat mengubah versi yang sama, server menolak penimpaan diam-diam. Dialog konflik menyediakan **Unduh versi perangkat**, **Unduh versi lain**, dan pilihan versi. Pemilihan mengganti seluruh data keluarga, bukan menggabungkan kolom secara otomatis. Unduh kedua cadangan bila perubahan keduanya diperlukan, lalu gabungkan secara manual. Perubahan tab lain juga dideteksi.
+- Kapasitas snapshot keluarga **3 MiB**. Foto disimpan sebagai data raster terkompresi dalam JSON privat (bukan bucket publik); per foto maksimal 750.000 karakter base64 (sekitar 550 KB). Batas unggah sumber 5 MB; aplikasi mengecilkan gambar ke maksimal 900 × 900 piksel. Saat batas tercapai, data tetap lokal; ekspor cadangan dan kurangi foto sebelum sinkronisasi dapat dilanjutkan. Setiap kolom jurnal maksimal 10.000 karakter.
+- `gkl_family_data` hanya diakses melalui API pemilik akun. RLS menolak akses tabel langsung dari role anon/authenticated; RPC hanya untuk server dan memeriksa kecocokan sesi/pemilik. UI admin tidak memberikan akses ke jurnal keluarga lain. Header identitas pemilik juga mencegah tab lama mengirim jurnal ke akun berbeda setelah cookie login berganti.
+- Menghapus akun Supabase menghapus data cloud keluarga melalui foreign-key cascade. Salinan lokal pada perangkat pengguna tetap ada. Ekspor cadangan berkala; materi eksperimen sendiri tetap publik.
+
+Struktur menggunakan satu snapshot JSON per keluarga dengan nomor revisi. Pembandingan revisi dan penyimpanan berlangsung atomik; pengiriman ulang data yang sama setelah respons hilang tidak membuat konflik palsu. Ini cocok untuk ukuran data keluarga saat ini; foto berjumlah besar memerlukan penyimpanan objek terpisah pada pengembangan berikutnya.
+
+## Perpindahan dari versi sebelumnya
+
+Data lokal akun Supabase versi sebelumnya dibaca otomatis dan masuk antrean sinkronisasi. Jika akun sudah memiliki data cloud yang berbeda, aplikasi menampilkan pilihan versi terlebih dahulu. Cadangan lama tanpa akun tetap bisa diunduh melalui Area orang tua. Jangan membersihkan browser sebelum sinkronisasi berhasil.
+
+Jika versi PostgreSQL sebelumnya sudah dipakai, **ekspor jurnal sebelum berpindah**: ID Supabase berbeda dari ID akun lama. Akun/password versi sebelumnya tidak otomatis dimigrasikan. Buat akun Supabase dan pulihkan file cadangan melalui Area orang tua. Tabel database lama tidak dihapus oleh migrasi ini. Data sebelum fitur akun masih bisa diunduh melalui **Unduh cadangan versi lama** bila tersedia di browser. Pemulihan JSON mengganti data akun yang sedang login dan kemudian disinkronkan ke perangkat lain setelah konfirmasi.
+
+## Struktur dan pengujian
+
+- `server/supabase.js`: SDK Supabase, cookie request, dan client admin khusus server.
+- `server/api.js`: autentikasi dan manajemen pengguna.
+- `supabase/migrations/`: RLS, RPC, akses sesi, proteksi admin, dan snapshot keluarga.
+- `sync.js`, `family-data.js`: antrean lokal, pemeriksaan revisi, resolusi konflik, dan validasi data bersama.
+- `auth.js`, `app.js`, `style.css`: antarmuka akun/admin, eksperimen, dan jurnal.
+- `tests/fake-supabase.js`: layanan Auth/REST tiruan khusus pengujian; bukan pengganti Supabase production.
+
+```bash
+npm test
+npx playwright install chromium
+npm run test:ui
+npm run build
+```
+
+Tes menggunakan SDK Supabase asli melawan layanan tiruan lokal serta SQL migrasi di PGlite. Tidak membutuhkan kredensial project dan tidak membuktikan konfigurasi layanan Supabase live. Lihat `TESTING.md` untuk cakupan dan pemeriksaan deployment.
