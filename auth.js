@@ -134,49 +134,123 @@ export function bindLogout(notify,beforeLogout=async()=>true) {
     catch (error) { notify(error.message); button.disabled = false; }
   };
 }
-let adminPage = 1, adminQuery = '', renderVersion = 0;
-export async function renderAdmin(shell) {
+let adminPage = 1, adminQuery = '', adminRole = 'all', adminStatus = 'all', adminSort = 'newest', renderVersion = 0;
+function filterOptions(options, selected) {
+  return options.map(([value, label]) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${label}</option>`).join('');
+}
+export async function renderAdmin(shell, notice = '') {
   const version = ++renderVersion;
   if (user?.role !== 'admin') { shell('<div class="empty"><h1>Akses terbatas</h1><p>Halaman ini hanya tersedia untuk administrator.</p><a class="button" href="#home">Kembali ke beranda</a></div>', 'parent', 'Akses terbatas'); return; }
-  shell(`<div class="page-heading"><div><p class="eyebrow">ADMINISTRASI</p><h1>Kelola pengguna</h1><p>Atur akun dan akses keluarga di Genius Kids Lab.</p></div><button id="create-user" class="button">＋ Tambah pengguna</button></div><div id="admin-stats" class="stats"></div><form id="user-search" class="admin-search"><label class="search"><input name="q" type="search" aria-label="Cari nama atau email pengguna" placeholder="Cari nama atau email…" value="${esc(adminQuery)}" maxlength="100"></label><button type="submit" class="button secondary">Cari</button></form><p id="admin-message" class="form-message" role="status"></p><section class="panel admin-list"><div id="user-list" aria-live="polite">Memuat pengguna…</div></section>`, 'parent', 'Kelola pengguna');
-  $('#user-search').onsubmit = e => { e.preventDefault(); adminQuery = new FormData(e.target).get('q'); adminPage = 1; renderAdmin(shell); };
+  shell(`<div class="page-heading"><div><p class="eyebrow">ADMINISTRASI</p><h1>Kelola pengguna</h1><p>Atur akun dan akses keluarga di Genius Kids Lab.</p></div><div class="admin-toolbar"><button id="refresh-users" class="button secondary">Muat ulang</button><button id="create-user" class="button">＋ Tambah pengguna</button></div></div>
+    <div id="admin-stats" class="stats admin-stats" aria-label="Ringkasan seluruh pengguna" aria-busy="true"></div>
+    <form id="user-search" class="admin-search admin-filters">
+      <label class="admin-query">Cari pengguna<input name="q" type="search" aria-label="Cari nama atau email pengguna" placeholder="Cari nama atau email…" value="${esc(adminQuery)}" maxlength="100"></label>
+      <label>Peran<select name="role" aria-label="Filter peran">${filterOptions([['all','Semua peran'],['user','Pengguna'],['admin','Administrator']],adminRole)}</select></label>
+      <label>Status<select name="status" aria-label="Filter status">${filterOptions([['all','Semua status'],['active','Aktif'],['inactive','Nonaktif']],adminStatus)}</select></label>
+      <label>Urutan<select name="sort" aria-label="Urutkan pengguna">${filterOptions([['newest','Terbaru'],['oldest','Terlama'],['name','Nama A–Z']],adminSort)}</select></label>
+      <div class="admin-filter-actions"><button type="submit" class="button secondary">Cari</button><button type="button" id="clear-filters" class="button secondary">Reset filter</button></div>
+    </form>
+    <p id="admin-message" class="form-message success" role="status">${esc(notice)}</p>
+    <section class="panel admin-list" aria-label="Daftar pengguna"><div id="user-list" aria-live="polite" aria-busy="true"><p class="admin-loading">Memuat pengguna…</p></div></section>`, 'parent', 'Kelola pengguna');
+  const search = $('#user-search');
+  const applyFilters = () => {
+    const values = new FormData(search);
+    adminQuery = values.get('q').trim(); adminRole = values.get('role'); adminStatus = values.get('status'); adminSort = values.get('sort');
+    adminPage = 1; renderAdmin(shell);
+  };
+  search.onsubmit = event => { event.preventDefault(); applyFilters(); };
+  search.querySelectorAll('select').forEach(select => { select.onchange = applyFilters; });
+  $('#clear-filters').onclick = () => { adminQuery = ''; adminRole = adminStatus = 'all'; adminSort = 'newest'; adminPage = 1; renderAdmin(shell); };
+  $('#refresh-users').onclick = () => renderAdmin(shell);
   $('#create-user').onclick = () => userDialog(null, shell);
   try {
-    const data = await api(`admin/users?q=${encodeURIComponent(adminQuery)}&page=${adminPage}`);
+    const params = new URLSearchParams({ q: adminQuery, page: adminPage, role: adminRole, status: adminStatus, sort: adminSort });
+    const data = await api(`admin/users?${params}`);
     if (version !== renderVersion || location.hash !== '#admin') return;
-    $('#admin-stats').innerHTML = [[data.stats.total, 'Total pengguna'], [data.stats.active, 'Akun aktif'], [data.stats.admins, 'Admin aktif']].map(([count, label]) => `<div class="admin-stat"><strong>${count}</strong><p>${label}</p></div>`).join('');
-    $('#user-list').innerHTML = `${data.users.length ? `<div class="table-scroll"><table class="users-table"><thead><tr><th scope="col">Pengguna</th><th scope="col">Peran</th><th scope="col">Status</th><th scope="col">Bergabung</th><th scope="col">Tindakan</th></tr></thead><tbody>${data.users.map(u => `<tr><td><b>${esc(u.name)} ${u.id === user.id ? '<small>(Anda)</small>' : ''}</b><span class="user-email">${esc(u.email)}</span></td><td>${u.role === 'admin' ? 'Administrator' : 'Pengguna'}</td><td><span class="status-pill ${u.active ? 'active' : ''}">${u.active ? 'Aktif' : 'Nonaktif'}</span></td><td>${new Date(u.createdAt).toLocaleDateString('id-ID', { dateStyle: 'medium' })}</td><td><div class="user-actions"><button class="button secondary small" data-edit="${u.id}">Edit<span class="sr-only"> ${esc(u.name)}</span></button><button class="button danger-ghost small" data-delete="${u.id}" ${u.id === user.id ? 'disabled title="Akun sendiri tidak dapat dihapus"' : ''}>Hapus<span class="sr-only"> ${esc(u.name)}</span></button></div></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty"><h2>Pengguna tidak ditemukan</h2><p>Coba nama atau alamat email yang lain.</p></div>'}<div class="admin-pagination"><span>${data.total} pengguna · Halaman ${data.page} dari ${Math.max(1, Math.ceil(data.total / data.pageSize))}</span><div><button class="button secondary small" id="prev-page" ${adminPage <= 1 ? 'disabled' : ''}>← Sebelumnya</button> <button class="button secondary small" id="next-page" ${adminPage * data.pageSize >= data.total ? 'disabled' : ''}>Berikutnya →</button></div></div>`;
+    adminPage = data.page;
+    $('#admin-stats').setAttribute('aria-busy', 'false');
+    $('#admin-stats').innerHTML = [[data.stats.total, 'Total pengguna'], [data.stats.active, 'Akun aktif'], [data.stats.inactive, 'Akun nonaktif'], [data.stats.admins, 'Admin aktif']].map(([count, label]) => `<div class="admin-stat"><strong>${count}</strong><p>${label}</p></div>`).join('');
+    const protectedAccount = target => target.id === user.id || (target.role === 'admin' && target.active && data.stats.admins <= 1);
+    $('#user-list').setAttribute('aria-busy', 'false');
+    $('#user-list').innerHTML = `${data.users.length ? `<div class="table-scroll" role="region" aria-label="Tabel pengguna" tabindex="0"><table class="users-table"><thead><tr><th scope="col">Pengguna</th><th scope="col">Peran</th><th scope="col">Status</th><th scope="col">Bergabung</th><th scope="col">Tindakan</th></tr></thead><tbody>${data.users.map(u => `<tr><td><b>${esc(u.name)} ${u.id === user.id ? '<small>(Anda)</small>' : ''}</b><span class="user-email">${esc(u.email)}</span></td><td data-label="Peran"><span class="role-pill ${u.role === 'admin' ? 'administrator' : ''}">${u.role === 'admin' ? 'Administrator' : 'Pengguna'}</span></td><td data-label="Status"><span class="status-pill ${u.active ? 'active' : ''}">${u.active ? 'Aktif' : 'Nonaktif'}</span></td><td data-label="Bergabung">${new Date(u.createdAt).toLocaleDateString('id-ID', { dateStyle: 'medium' })}</td><td><div class="user-actions"><button class="button secondary small" data-edit="${u.id}">Edit<span class="sr-only"> ${esc(u.name)}</span></button><button class="button danger-ghost small" data-delete="${u.id}" ${protectedAccount(u) ? 'disabled title="Akun sendiri atau admin aktif terakhir tidak dapat dihapus"' : ''}>Hapus<span class="sr-only"> ${esc(u.name)}</span></button></div></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty"><h2>Pengguna tidak ditemukan</h2><p>Ubah pencarian atau reset filter untuk melihat pengguna lainnya.</p></div>'}
+      <div class="admin-pagination"><span>${data.total ? (data.page - 1) * data.pageSize + 1 : 0}–${Math.min(data.page * data.pageSize, data.total)} dari ${data.total} pengguna · Halaman ${data.page} dari ${data.pages}</span><div><button class="button secondary small" id="prev-page" ${data.page <= 1 ? 'disabled' : ''}>← Sebelumnya</button> <button class="button secondary small" id="next-page" ${data.page >= data.pages ? 'disabled' : ''}>Berikutnya →</button></div></div>`;
     $('#prev-page').onclick = () => { adminPage--; renderAdmin(shell); };
     $('#next-page').onclick = () => { adminPage++; renderAdmin(shell); };
-    document.querySelectorAll('[data-edit]').forEach(button => button.onclick = () => userDialog(data.users.find(u => u.id === button.dataset.edit), shell));
-    document.querySelectorAll('[data-delete]').forEach(button => button.onclick = async () => {
-      const target = data.users.find(u => u.id === button.dataset.delete);
-      if (!confirm(`Hapus akun ${target.email} secara permanen? Sesi dan tautan resetnya juga akan dihapus. Data keluarga di Supabase ikut dihapus. Salinan lokal pada perangkat pengguna tidak dihapus.`)) return;
-      button.disabled = true;
-      try { await api(`admin/users/${target.id}`, { method: 'DELETE', body: {} }); if (data.users.length === 1 && adminPage > 1) adminPage--; renderAdmin(shell); }
-      catch (error) { if ($('#admin-message')) $('#admin-message').textContent = error.message; button.disabled = false; }
+    document.querySelectorAll('[data-edit]').forEach(button => button.onclick = () => {
+      const target = data.users.find(u => u.id === button.dataset.edit);
+      userDialog(target, shell, protectedAccount(target));
     });
+    document.querySelectorAll('[data-delete]').forEach(button => button.onclick = () => deleteUserDialog(data.users.find(u => u.id === button.dataset.delete), shell));
   } catch (error) {
-    if (version !== renderVersion || !$('#user-list')) return;
+    if (version !== renderVersion || location.hash !== '#admin' || !$('#user-list')) return;
+    $('#admin-stats').setAttribute('aria-busy', 'false');
+    $('#user-list').setAttribute('aria-busy', 'false');
     $('#user-list').innerHTML = `<div class="empty"><h2>Data belum dapat dimuat</h2><p>${esc(error.message)}</p><button class="button" id="retry-users">Coba lagi</button></div>`;
     $('#retry-users').onclick = () => renderAdmin(shell);
   }
 }
-function userDialog(target, shell) {
-  const dialog = document.createElement('dialog'); dialog.className = 'user-dialog'; dialog.setAttribute('aria-labelledby', 'user-dialog-title');
-  const self = target?.id === user.id;
-  dialog.innerHTML = `<form id="user-form"><div class="panel-head"><h2 id="user-dialog-title">${target ? 'Edit pengguna' : 'Tambah pengguna'}</h2><button type="button" class="small ghost" data-close aria-label="Tutup">✕</button></div><label>Nama<input name="name" required maxlength="80" autocomplete="off" value="${esc(target?.name || '')}"></label><label>Email<input name="email" type="email" required maxlength="254" autocomplete="off" value="${esc(target?.email || '')}"></label>${target ? '' : '<label>Password awal<input name="password" type="password" required minlength="12" maxlength="128" autocomplete="new-password" placeholder="Minimal 12 karakter"></label>'}<label>Peran<select name="role" ${self ? 'disabled' : ''}><option value="user" ${target?.role !== 'admin' ? 'selected' : ''}>Pengguna</option><option value="admin" ${target?.role === 'admin' ? 'selected' : ''}>Administrator</option></select></label>${target ? `<label class="checkline"><input name="active" type="checkbox" ${target.active ? 'checked' : ''} ${self ? 'disabled' : ''}> Akun aktif</label><p class="muted">Mengubah email, peran, atau menonaktifkan akun akan mengakhiri sesi pengguna. ${self ? 'Peran dan status akun sendiri tidak dapat diubah.' : ''}</p>` : ''}<p data-message class="form-message" role="alert"></p><div class="form-actions"><button type="submit" class="button">${target ? 'Simpan perubahan' : 'Buat pengguna'}</button><button type="button" class="button secondary" data-close>Batal</button></div></form>`;
-  document.body.append(dialog); dialog.addEventListener('close', () => dialog.remove());
-  dialog.querySelectorAll('[data-close]').forEach(button => button.onclick = () => dialog.close());
+function adminDialog(markup, onSubmit) {
+  const opener = document.activeElement;
+  const dialog = document.createElement('dialog');
+  dialog.className = 'user-dialog'; dialog.setAttribute('aria-labelledby', 'user-dialog-title');
+  dialog.innerHTML = markup;
+  document.body.append(dialog);
+  let busy = false;
+  dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
+  dialog.addEventListener('close', () => { dialog.remove(); if (opener?.isConnected) opener.focus(); });
+  dialog.querySelectorAll('[data-close]').forEach(button => { button.onclick = () => { if (!busy) dialog.close(); }; });
   const form = dialog.querySelector('form');
-  form.onsubmit = e => { e.preventDefault(); submit(form, async () => {
+  form.onsubmit = event => {
+    event.preventDefault();
+    if (busy) return;
+    busy = true;
+    dialog.querySelectorAll('[data-close]').forEach(button => { button.disabled = true; });
+    submit(form, () => onSubmit(form, dialog)).finally(() => {
+      busy = false;
+      dialog.querySelectorAll('[data-close]').forEach(button => { button.disabled = false; });
+    });
+  };
+  dialog.showModal();
+  return form;
+}
+function userDialog(target, shell, protectRole = false) {
+  const self = target?.id === user.id;
+  const form = adminDialog(`<form id="user-form"><div class="panel-head"><h2 id="user-dialog-title">${target ? 'Edit pengguna' : 'Tambah pengguna'}</h2><button type="button" class="small ghost" data-close aria-label="Tutup">✕</button></div>
+    <label>Nama<input name="name" required maxlength="80" autocomplete="off" value="${esc(target?.name || '')}"></label>
+    <label>Email<input name="email" type="email" required maxlength="254" autocomplete="off" value="${esc(target?.email || '')}"></label>
+    ${target ? '' : `${passwordField('password', 'Password awal', true)}${passwordField('confirmPassword', 'Konfirmasi password', true)}<p class="muted">Akun langsung aktif. Sampaikan password awal kepada pemilik akun melalui saluran pribadi.</p>`}
+    <label for="user-role">Peran</label><select id="user-role" name="role" aria-describedby="role-help" ${protectRole ? 'disabled' : ''}><option value="user" ${target?.role !== 'admin' ? 'selected' : ''}>Pengguna</option><option value="admin" ${target?.role === 'admin' ? 'selected' : ''}>Administrator</option></select>
+    <p class="muted" id="role-help">Administrator dapat membuat, mengubah, dan menghapus akun pengguna.</p>
+    ${target ? `<label class="checkline"><input name="active" type="checkbox" ${target.active ? 'checked' : ''} ${protectRole ? 'disabled' : ''}> Akun aktif</label><p class="muted">Mengubah email, peran, atau menonaktifkan akun akan mengakhiri sesi pengguna. ${protectRole ? 'Peran dan status akun sendiri atau admin aktif terakhir dilindungi.' : ''}</p>` : ''}
+    <p data-message class="form-message" role="alert"></p><div class="form-actions"><button type="submit" class="button">${target ? 'Simpan perubahan' : 'Buat pengguna'}</button><button type="button" class="button secondary" data-close>Batal</button></div></form>`, async (form, dialog) => {
     const values = Object.fromEntries(new FormData(form));
-    values.role = self ? 'admin' : values.role;
-    if (target) values.active = self ? true : form.elements.active.checked;
+    if (!target && values.password !== values.confirmPassword) throw new Error('Konfirmasi password belum cocok.');
+    delete values.confirmPassword;
+    values.role = protectRole ? target.role : values.role;
+    if (target) values.active = protectRole ? target.active : form.elements.active.checked;
     const data = await api(`admin/users${target ? `/${target.id}` : ''}`, { method: target ? 'PATCH' : 'POST', body: values });
     if (self && target.email !== data.user.email) { location.replace('/#login'); location.reload(); return; }
     if (self) user = data.user;
-    dialog.close(); renderAdmin(shell);
-  }); };
-  dialog.showModal();
+    dialog.close();
+    if (location.hash !== '#admin') return;
+    if (!target) { adminPage = 1; adminQuery = ''; adminRole = adminStatus = 'all'; adminSort = 'newest'; }
+    renderAdmin(shell, target ? `Perubahan ${data.user.email} berhasil disimpan.` : `Akun ${data.user.email} berhasil dibuat.`);
+  });
+  bindPasswordFields(form);
+}
+function deleteUserDialog(target, shell) {
+  const form = adminDialog(`<form><div class="panel-head"><h2 id="user-dialog-title">Hapus pengguna?</h2><button type="button" class="small ghost" data-close aria-label="Tutup">✕</button></div>
+    <p>Akun <strong>${esc(target.name)}</strong> (${esc(target.email)}) beserta profil dan jurnal keluarga di cloud akan dihapus permanen. Salinan lokal pada perangkat pengguna tetap ada.</p>
+    <p>Untuk menghentikan akses sementara, gunakan <strong>Edit → Akun aktif</strong>.</p>
+    <label>Ketik email pengguna<input name="confirmEmail" type="email" required autocomplete="off" spellcheck="false" placeholder="${esc(target.email)}"></label>
+    <p data-message class="form-message" role="alert"></p><div class="form-actions"><button type="submit" class="button danger-ghost" disabled>Hapus permanen</button><button type="button" class="button secondary" data-close>Batal</button></div></form>`, async (form, dialog) => {
+    const confirmEmail = form.elements.confirmEmail.value.trim().toLowerCase();
+    if (confirmEmail !== target.email.toLowerCase()) throw new Error('Alamat email belum cocok.');
+    await api(`admin/users/${target.id}`, { method: 'DELETE', body: { confirmEmail } });
+    dialog.close();
+    if (location.hash === '#admin') renderAdmin(shell, `Akun ${target.email} berhasil dihapus.`);
+  });
+  form.elements.confirmEmail.oninput = () => {
+    form.querySelector('[type="submit"]').disabled = form.elements.confirmEmail.value.trim().toLowerCase() !== target.email.toLowerCase();
+  };
 }

@@ -3,7 +3,7 @@
 Pemeriksaan pada 2 Oktober 2026:
 
 - `npm test`: pengujian API melalui **SDK Supabase asli**, layanan HTTP Auth/REST tiruan, dan migrasi SQL di PGlite.
-- `npm run test:ui`: 6 alur browser Chromium dengan server Supabase tiruan.
+- `npm run test:ui`: 7 alur browser Chromium dengan server Supabase tiruan.
 - `npm run build`: frontend, font, dan aset berada di `dist`; SDK server, secret, migrasi, serta test tidak disalin ke direktori publik.
 
 ## Cakupan API/SQL
@@ -24,6 +24,8 @@ Migrasi gabungan juga dijalankan ulang pada database berisi akun, sesi, rate lim
 - Pencatatan jurnal, logout, dan pemisahan jurnal dua akun di browser yang sama.
 - Lupa password → email tiruan → konfirmasi tautan → password baru → login ulang; jurnal tetap tersedia.
 - Penolakan admin bagi pengguna biasa, pembuatan/pencarian/edit/penonaktifan/penghapusan pengguna.
+- Filter peran/status, urutan nama, reset filter, retry setelah error jaringan, konfirmasi password, email duplikat, dan pengetikan email sebelum hapus.
+- SQL direktori admin diuji dengan 25 akun: filter sebelum pagination, statistik global, urutan stabil, batas halaman, pencarian literal, serta penolakan RPC bagi anon/authenticated.
 - Login ponsel 390 px dan admin 360 px tanpa overflow halaman; tombol tambah pengguna tetap tampil.
 - Dua konteks browser terpisah: nama/usia profil, status misi selesai, jurnal, dan foto muncul pada perangkat kedua; draf offline bertahan ketika perangkat pertama membuat perubahan berbeda.
 - Dialog konflik menyediakan unduhan kedua versi; pemilihan versi lokal tersimpan ke cloud dan dapat dibaca lagi dari perangkat pertama.
@@ -48,7 +50,7 @@ Fixture menirukan kontrak HTTP Auth/REST untuk menguji SDK, API, UI, dan SQL. Fi
 
 Project URL dan key Supabase belum tersedia, sehingga koneksi project live dan deployment Vercel belum diuji. Setelah konfigurasi:
 
-1. Jalankan migrasi gabungan `supabase/migrations/20261002000000_init.sql` (Auth, admin, dan family sync) di project Supabase; jalankan juga migrasi `20261002010000_admin_only_registration.sql`, nonaktifkan **Allow new users to sign up**, lalu pastikan pembuatan akun oleh admin/login berjalan dan user biasa tidak bisa mengakses RPC internal/admin.
+1. Jalankan migrasi gabungan `supabase/migrations/20261002000000_init.sql` (Auth, admin, dan family sync) di project Supabase; jalankan juga migrasi `20261002010000_admin_only_registration.sql`, jalankan migrasi `20261002020000_admin_directory.sql`, nonaktifkan **Allow new users to sign up**, lalu pastikan pembuatan akun oleh admin/login berjalan dan user biasa tidak bisa mengakses RPC internal/admin.
 2. Terapkan email templates dari README, Site URL, Redirect URLs, minimum password 12 karakter, dan Custom SMTP Supabase.
 3. Uji email konfirmasi/reset nyata, termasuk tautan yang sudah dipakai dan kedaluwarsa, lalu uji refresh setelah masa berlaku JWT.
 4. Uji pencabutan akses dari browser kedua setelah perubahan password/peran/status; jangan memakai Supabase secret di frontend.

@@ -111,7 +111,15 @@ export function createHandler({ clients = createClients, env = process.env } = {
         if (publicUser(actor).role !== 'admin') throw new HttpError(403, 'Halaman ini hanya untuk administrator.');
         if (path === '/api/admin/users' && method === 'GET') {
           const page = Math.max(1, Math.min(100000, Number.parseInt(url.searchParams.get('page'), 10) || 1));
-          return reply(200, unwrap(await admin.rpc('gkl_list_users', { p_query: (url.searchParams.get('q') || '').trim().slice(0, 100), p_page: page })));
+          const role = url.searchParams.get('role') || 'all', status = url.searchParams.get('status') || 'all', sort = url.searchParams.get('sort') || 'newest';
+          if (!['all', 'user', 'admin'].includes(role) || !['all', 'active', 'inactive'].includes(status) || !['newest', 'oldest', 'name'].includes(sort)) {
+            throw new HttpError(400, 'Filter atau urutan pengguna tidak valid.');
+          }
+          const result = await admin.rpc('gkl_search_users', {
+            p_query: (url.searchParams.get('q') || '').trim().slice(0, 100), p_page: page, p_role: role, p_status: status, p_sort: sort,
+          });
+          if (result.error?.code === 'PGRST202') throw new HttpError(503, 'Pembaruan database admin belum diterapkan. Hubungi pengelola aplikasi.');
+          return reply(200, unwrap(result));
         }
         if (path === '/api/admin/users' && method === 'POST') {
           if (!['user', 'admin'].includes(body.role)) throw new HttpError(400, 'Peran tidak valid.');
@@ -133,6 +141,9 @@ export function createHandler({ clients = createClients, env = process.env } = {
           }
           // The database trigger additionally protects the last admin under concurrent requests.
           if (!next) {
+            if (typeof body.confirmEmail !== 'string' || body.confirmEmail.trim().toLowerCase() !== target.email.toLowerCase()) {
+              throw new HttpError(400, 'Ketik alamat email pengguna dengan tepat untuk mengonfirmasi penghapusan.');
+            }
             unwrap(await admin.auth.admin.deleteUser(id));
             return reply(200, { user: null, message: 'Pengguna dihapus.' });
           }

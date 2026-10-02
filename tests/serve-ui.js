@@ -7,6 +7,8 @@ await fake.createUser({ email:'admin@example.test', password:'browser-admin-pass
 await fake.createUser({email:'sync@example.test',password:'browser-sync-password',user_metadata:{name:'Keluarga Sync'}});
 await fake.createUser({email:'browser@example.test',password:'browser-family-password',user_metadata:{name:'Keluarga Browser'}});
 await fake.createUser({email:'second@example.test',password:'second-family-password',user_metadata:{name:'Keluarga Kedua'}});
+const dormant = await fake.createUser({email:'dormant@example.test',password:'browser-dormant-password',user_metadata:{name:'Dormant Family'}});
+await fake.db.query("UPDATE auth.users SET banned_until='2099-01-01' WHERE id=$1",[dormant.id]);
 const handler = createHandler({ env: fake.env });
 const server = createLocalServer((req,res) => {
   if (req.url === '/api/test-outbox' && req.method === 'GET') { res.setHeader('Content-Type','application/json'); res.end(JSON.stringify(fake.outbox)); return; }

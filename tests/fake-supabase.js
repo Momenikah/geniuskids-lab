@@ -37,7 +37,7 @@ export async function fakeSupabase({ confirmEmail = false, appUrl = 'http://loca
       if (path.startsWith('/rest/v1/rpc/')) {
         if (!service) return reply(403, { message: 'forbidden', code: '42501' });
         const rpc = path.split('/').pop();
-        const argumentsByName = { gkl_read_family: ['p_user','p_session'], gkl_write_family: ['p_user','p_session','p_revision','p_data'], gkl_rate_limit: ['p_key','p_limit'], gkl_allow_session: ['p_session','p_user'], gkl_check_session: ['p_session','p_user'], gkl_revoke_session: ['p_session'], gkl_list_users: ['p_query','p_page'] };
+        const argumentsByName = { gkl_search_users: ['p_query','p_page','p_role','p_status','p_sort'], gkl_read_family: ['p_user','p_session'], gkl_write_family: ['p_user','p_session','p_revision','p_data'], gkl_rate_limit: ['p_key','p_limit'], gkl_allow_session: ['p_session','p_user'], gkl_check_session: ['p_session','p_user'], gkl_revoke_session: ['p_session'], gkl_list_users: ['p_query','p_page'] };
         if (!argumentsByName[rpc]) return reply(404);
         const args = argumentsByName[rpc].map(key => body[key]);
         const result = await db.query(`SELECT public.${rpc}(${args.map((_,i)=>`$${i+1}`).join(',')}) AS result`, args);

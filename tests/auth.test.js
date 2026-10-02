@@ -56,12 +56,22 @@ test('admin create, literal search, role changes, disable, reenable and delete u
   assert.equal((await request('admin/users?q=%25',{cookie:adminCookie})).data.total,0);
   const next={name:'Updated',email:'managed@example.test',role:'user',active:false};
   assert.equal((await request(`admin/users/${id}`,{method:'PATCH',cookie:adminCookie,body:next})).status,200);
+  const filtered=await request('admin/users?role=user&status=inactive&sort=name&q=managed&page=99',{cookie:adminCookie});
+  assert.equal(filtered.status,200); assert.equal(filtered.data.total,1); assert.equal(filtered.data.page,1);
+  assert.equal(filtered.data.users[0].id,id);
+  for (const query of ['role=owner','status=banned','sort=random']) {
+    assert.equal((await request(`admin/users?${query}`,{cookie:adminCookie})).status,400);
+  }
   assert.equal((await request('auth/me',{cookie:session.cookie})).data.user,null);
   assert.equal((await login(next.email)).status,401);
   assert.equal((await request(`admin/users/${id}`,{method:'PATCH',cookie:adminCookie,body:{...next,active:true,role:'admin'}})).data.user.role,'admin');
   // Old sessions cannot revive when an account is reactivated.
   assert.equal((await request('auth/me',{cookie:session.cookie})).data.user,null);
-  assert.equal((await request(`admin/users/${id}`,{method:'DELETE',cookie:adminCookie,body:{}})).status,200);
+  for (const body of [{},{confirmEmail:'wrong@example.test'}]) {
+    assert.equal((await request(`admin/users/${id}`,{method:'DELETE',cookie:adminCookie,body})).status,400);
+    assert.equal((await request('admin/users?q=managed',{cookie:adminCookie})).data.total,1);
+  }
+  assert.equal((await request(`admin/users/${id}`,{method:'DELETE',cookie:adminCookie,body:{confirmEmail:'managed@example.test'}})).status,200);
 });
 test('self protection and database-level last-admin guard', async () => {
   const me=(await request('auth/me',{cookie:adminCookie})).data.user;

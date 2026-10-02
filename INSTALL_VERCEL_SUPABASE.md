@@ -53,7 +53,8 @@ Secret key atau service-role key hanya boleh dipakai oleh server. Jangan menaruh
 3. Salin **seluruh isi file**, dari `BEGIN;` sampai `COMMIT;`, ke SQL Editor.
 4. Klik **Run** dan pastikan tidak ada error.
 5. Jalankan juga seluruh isi [20261002010000_admin_only_registration.sql](supabase/migrations/20261002010000_admin_only_registration.sql) untuk menutup pendaftaran langsung.
-6. Periksa schema `public` melalui Table Editor. Tabel berikut harus tersedia:
+6. Jalankan [20261002020000_admin_directory.sql](supabase/migrations/20261002020000_admin_directory.sql) untuk pencarian, filter, pengurutan, dan pagination admin. Untuk upgrade project yang sudah berjalan, cukup jalankan migrasi yang belum diterapkan sebelum deployment kode terbaru.
+7. Periksa schema `public` melalui Table Editor. Tabel berikut harus tersedia:
 
    - `gkl_rate_limits`
    - `gkl_session_access`
@@ -216,7 +217,8 @@ Preview Vercel membutuhkan `APP_URL` khusus yang cocok dengan domain preview, em
 
 - [ ] Halaman utama, gambar, dan materi eksperimen tampil.
 - [ ] Dalam browser tanpa sesi, `https://DOMAIN_ANDA/api/auth/me` mengembalikan JSON `{"user":null}`, bukan halaman HTML atau 404. Ini hanya pemeriksaan awal routing, bukan bukti migrasi database lengkap.
-- [ ] Admin dapat login dan membuka `/#admin`.
+- [ ] Admin dapat login dan membuka `/#admin`; filter peran/status, urutan daftar, pagination, dan tombol muat ulang bekerja.
+- [ ] Tambah pengguna memerlukan konfirmasi password; penghapusan memerlukan pengetikan email. Akun sendiri/admin aktif terakhir tetap dilindungi.
 - [ ] Admin dapat membuat pengguna melalui **Tambah pengguna**; akun tersebut dapat login. Pendaftaran publik melalui UI/API aplikasi maupun Supabase langsung ditolak.
 - [ ] Alur lupa password mengirim email ke domain production dan password baru dapat digunakan.
 - [ ] Pengguna biasa tidak dapat membuka fungsi admin.
@@ -242,6 +244,7 @@ Pengujian otomatis tambahan tersedia dalam [TESTING.md](TESTING.md). Tes lokal m
 | Tautan email menuju localhost/domain yang salah | `APP_URL` pada environment terkait, Site URL, Redirect URLs, dan variabel `RedirectTo` dalam template. Setelah perbaikan, minta email baru. |
 | Tautan konfirmasi/reset tidak valid | Pastikan kedua template sesuai langkah 4; gunakan email terbaru dan token yang belum dipakai atau kedaluwarsa. |
 | Email admin sudah digunakan | Script tidak menimpa akun lama. Gunakan email baru untuk bootstrap admin. |
+| `Pembaruan database admin belum diterapkan` | Jalankan `supabase/migrations/20261002020000_admin_directory.sql` di SQL Editor project yang digunakan Vercel, lalu muat ulang halaman admin. |
 | Login berhasil tetapi menu Admin tidak muncul | Role harus berada di `app_metadata.gkl_role=admin`, bukan `user_metadata` atau environment `ADMIN_EMAIL`. Untuk akun yang sudah ada, jalankan SQL pemulihan admin lalu keluar/login kembali. |
 | Login lokal tidak bertahan | Gunakan `APP_URL=http://localhost:5173` untuk lokal; jangan mengaktifkan `NODE_ENV=production` atau variabel `VERCEL` pada HTTP lokal. |
 | `Terlalu banyak percobaan` | Tunggu sebelum mencoba lagi dan periksa rate limit Auth Supabase. Aplikasi juga membatasi percobaan melalui database. |

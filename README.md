@@ -19,6 +19,8 @@ Aplikasi pendamping 100 eksperimen sains berbahasa Indonesia. Akun, password, ko
 
    Setelah itu jalankan [`20261002010000_admin_only_registration.sql`](supabase/migrations/20261002010000_admin_only_registration.sql). Migrasi tambahan menolak akun baru tanpa `app_metadata.gkl_role` dari Admin API; akun lama tidak diubah.
 
+   Terakhir, jalankan [`20261002020000_admin_directory.sql`](supabase/migrations/20261002020000_admin_directory.sql) untuk filter peran/status, pengurutan, dan pagination admin. Terapkan sebelum deployment kode terbaru; migrasi ini tidak mengubah data akun.
+
    Migrasi menambahkan tabel internal dengan RLS, fungsi pencarian pengguna dan rate limit yang hanya dapat dipanggil service role, izin sesi aplikasi, serta trigger proteksi admin terakhir. Akun tetap berada di `auth.users` yang dikelola Supabase; tidak ada tabel password aplikasi.
 
 3. Di **Authentication → Providers / Sign In**, aktifkan Email. Nonaktifkan **Allow new users to sign up** di pengaturan Auth. Pembuatan akun hanya melalui Admin API oleh administrator; konfirmasi email lama tetap didukung. Atur minimum panjang password Supabase ke **12** agar batas yang sama berlaku juga pada request langsung ke Supabase.
@@ -93,7 +95,9 @@ npm start
 
 ## Akun dan admin
 
-Halaman `/#login`, `/#forgot-password`, `/#reset-password`, dan `/#admin` tersedia. Pendaftaran publik ditutup: `/#register` diarahkan ke login dengan petunjuk menghubungi admin, dan `/api/auth/register` selalu ditolak. Admin dapat mencari pengguna dengan pagination, membuat akun, mengubah nama/email/peran, menonaktifkan/mengaktifkan, serta menghapus akun setelah konfirmasi. Akun yang dibuat admin langsung terkonfirmasi; admin bertanggung jawab menyerahkan password awal kepada pemilik akun.
+Halaman `/#login`, `/#forgot-password`, `/#reset-password`, dan `/#admin` tersedia. Pendaftaran publik ditutup: `/#register` diarahkan ke login dengan petunjuk menghubungi admin, dan `/api/auth/register` selalu ditolak. Admin dapat mencari pengguna dengan pagination, menyaring peran/status, mengurutkan berdasarkan nama atau waktu pendaftaran, membuat akun, mengubah nama/email/peran, serta menonaktifkan/mengaktifkan akun. Statistik menunjukkan seluruh akun (total, aktif, nonaktif, admin aktif), tidak hanya hasil filter. Tombol **Muat ulang** mempertahankan filter dan **Reset filter** mengembalikan tampilan awal. Halaman otomatis disesuaikan jika hasil pencarian berkurang. Akun yang dibuat admin langsung terkonfirmasi; admin bertanggung jawab menyerahkan password awal kepada pemilik akun.
+
+Form **Tambah pengguna** menyediakan konfirmasi password, tombol lihat/sembunyikan, dan petunjuk panjang password. Form tetap terbuka dengan data yang diisi jika terjadi error seperti email duplikat. Penghapusan memerlukan pengetikan email akun; API juga memvalidasi `confirmEmail`. Peran/status akun sendiri dan admin aktif terakhir dilindungi di form maupun backend.
 
 Form login menampilkan petunjuk huruf besar/kecil, tombol **Lihat / Sembunyikan**, dan indikator Caps Lock. Form password baru mencantumkan batas 12–128 karakter. Tautan **Lupa password?** membawa email dari form login; setelah permintaan berhasil, tersedia panduan memeriksa email/spam dan tombol **Kirim ulang tautan**. Pengiriman email tetap menggunakan konfigurasi Supabase di atas.
 
