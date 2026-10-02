@@ -9,10 +9,10 @@ test('register, local journal, logout, reset via email, login, and admin denial'
   await page.getByLabel('Nama orang tua').fill('Keluarga Browser');
   await page.getByLabel('Alamat email').fill('browser@example.test');
   await page.getByLabel('Password', { exact: true }).fill('browser-family-password');
-  await page.getByLabel('Konfirmasi password').fill('different-password');
+  await page.getByLabel('Konfirmasi password', { exact: true }).fill('different-password');
   await page.getByRole('button', { name: 'Buat akun' }).click();
   await expect(page.getByRole('alert')).toContainText('Konfirmasi password belum cocok');
-  await page.getByLabel('Konfirmasi password').fill('browser-family-password');
+  await page.getByLabel('Konfirmasi password', { exact: true }).fill('browser-family-password');
   await page.getByRole('button', { name: 'Buat akun' }).click();
   await confirmSignup(page, request, 'browser@example.test');
   await expect(page.getByRole('heading', { name: 'Halo, Ilmuwan Cilik!' })).toBeVisible();
@@ -33,7 +33,7 @@ test('register, local journal, logout, reset via email, login, and admin denial'
   await page.getByLabel('Nama orang tua').fill('Keluarga Kedua');
   await page.getByLabel('Alamat email').fill('second@example.test');
   await page.getByLabel('Password', { exact: true }).fill('second-family-password');
-  await page.getByLabel('Konfirmasi password').fill('second-family-password');
+  await page.getByLabel('Konfirmasi password', { exact: true }).fill('second-family-password');
   await page.getByRole('button', { name: 'Buat akun' }).click();
   await confirmSignup(page, request, 'second@example.test');
   await expect(page.getByRole('heading', { name: 'Halo, Ilmuwan Cilik!' })).toBeVisible();
@@ -50,7 +50,7 @@ test('register, local journal, logout, reset via email, login, and admin denial'
   await page.goto(outbox.at(-1).url);
   await page.getByRole('button', { name: 'Lanjutkan reset password' }).click();
   await page.getByLabel('Password baru', { exact: true }).fill('browser-family-new-password');
-  await page.getByLabel('Konfirmasi password').fill('browser-family-new-password');
+  await page.getByLabel('Konfirmasi password', { exact: true }).fill('browser-family-new-password');
   await page.getByRole('button', { name: 'Simpan password baru' }).click();
   await expect(page.locator('.form-message.success')).toContainText('Password diperbarui');
   await page.getByRole('link', { name: 'Kembali ke login' }).click();
@@ -117,3 +117,54 @@ async function confirmSignup(page, request, email) {
   await page.goto(confirmation.url);
   await page.getByRole('button', { name: 'Konfirmasi email', exact: true }).click();
 }
+
+test('password guidance, visibility and Caps Lock work without submitting login', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto('/#login');
+  const password = page.getByLabel('Password', { exact: true });
+  await expect(password).toHaveAccessibleDescription(/membedakan huruf besar dan kecil/);
+  await password.fill('a-password-to-check');
+  await page.getByRole('button', { name: 'Tampilkan password', exact: true }).click();
+  await expect(password).toHaveAttribute('type', 'text');
+  await expect(page.getByRole('button', { name: 'Sembunyikan password', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(password).toHaveValue('a-password-to-check');
+  await page.getByRole('button', { name: 'Sembunyikan password', exact: true }).click();
+  await expect(password).toHaveAttribute('type', 'password');
+  await password.focus();
+  await password.dispatchEvent('keydown', { key: 'A', modifierCapsLock: true });
+  await expect(page.getByText('Caps Lock aktif.')).toBeVisible();
+  await password.dispatchEvent('keyup', { key: 'CapsLock', modifierCapsLock: false });
+  await expect(page.getByText('Caps Lock aktif.')).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: 'test-results/password-hints-mobile.png', fullPage: true });
+  await page.getByRole('link', { name: 'Daftar sekarang' }).click();
+  await expect(page.getByLabel('Password', { exact: true })).toHaveAccessibleDescription(/12–128 karakter/);
+  await page.getByLabel('Konfirmasi password', { exact: true }).fill('confirm-password');
+  await page.getByRole('button', { name: 'Tampilkan konfirmasi password', exact: true }).click();
+  await expect(page.getByLabel('Konfirmasi password', { exact: true })).toHaveAttribute('type', 'text');
+  await expect(page.getByLabel('Password', { exact: true })).toHaveAttribute('type', 'password');
+});
+
+test('forgot password carries email from failed login and supports retry after a network error', async ({ page }) => {
+  await page.goto('/#login');
+  await page.getByLabel('Alamat email').fill('recovery-ui@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('incorrect-password');
+  await page.getByRole('button', { name: 'Masuk ke lab' }).click();
+  await expect(page.getByRole('alert')).toContainText('Email atau password salah');
+  await page.getByRole('link', { name: 'Lupa password?' }).click();
+  await expect(page.getByLabel('Alamat email')).toHaveValue('recovery-ui@example.test');
+  await expect(page.locator('input[name="password"]')).toHaveCount(0);
+  await page.route('**/api/auth/forgot-password', route => route.abort(), { times: 1 });
+  await page.getByRole('button', { name: 'Kirim tautan reset' }).click();
+  await expect(page.getByRole('alert')).toContainText('Periksa koneksi internet');
+  await expect(page.getByRole('button', { name: 'Kirim tautan reset' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Kirim tautan reset' }).click();
+  await expect(page.locator('#auth-form').getByRole('status')).toContainText('Jika email terdaftar');
+  await expect(page.getByText('Langkah berikutnya', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Kirim ulang tautan' }).click();
+  await expect(page.locator('#auth-form').getByRole('status')).toContainText('Jika email terdaftar');
+  await page.screenshot({ path: 'test-results/forgot-password-success.png', fullPage: true });
+  await page.getByLabel('Alamat email').fill('another@example.test');
+  await expect(page.getByText('Langkah berikutnya', { exact: true })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Kirim tautan reset' })).toBeVisible();
+});

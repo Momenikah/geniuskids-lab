@@ -13,7 +13,7 @@ Aplikasi pendamping 100 eksperimen sains berbahasa Indonesia. Akun, password, ko
 
    Isi `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, dan `APP_URL` (lokal: `http://localhost:5173`). Pasangan key legacy `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` juga didukung. Secret/service-role key hanya berada di server; jangan masukkan ke JavaScript frontend atau repository.
 
-2. Buka **SQL Editor**, jalankan kedua migrasi secara berurutan: [`20261001000000_auth.sql`](supabase/migrations/20261001000000_auth.sql), lalu [`20261001010000_family_sync.sql`](supabase/migrations/20261001010000_family_sync.sql). Jika migrasi Auth sudah pernah dijalankan, cukup jalankan migrasi family sync yang baru. Alternatif untuk project yang sudah terhubung ke Supabase CLI: `supabase db push`. SQL dapat dijalankan ulang dan tidak menghapus tabel dari implementasi sebelumnya.
+2. Buka **SQL Editor**, jalankan satu migrasi gabungan: [`20261002000000_init.sql`](supabase/migrations/20261002000000_init.sql). File ini mencakup Auth, admin, dan family sync dalam satu transaksi. SQL dapat dijalankan ulang tanpa menghapus data aplikasi. Untuk project baru yang sudah terhubung ke Supabase CLI, gunakan `supabase db push`. Jika project pernah memakai migrasi lama, ikuti bagian **Migrasi dari dua file SQL lama** di bawah.
 
    Migrasi menambahkan tabel internal dengan RLS, fungsi pencarian pengguna dan rate limit yang hanya dapat dipanggil service role, izin sesi aplikasi, serta trigger proteksi admin terakhir. Akun tetap berada di `auth.users` yang dikelola Supabase; tidak ada tabel password aplikasi.
 
@@ -42,6 +42,24 @@ Aplikasi pendamping 100 eksperimen sains berbahasa Indonesia. Akun, password, ko
 6. Untuk email sungguhan, konfigurasi **Custom SMTP di Dashboard Supabase** dan verifikasi domain pengirim. Layanan email bawaan memiliki batas pengiriman/penerima; jangan mengandalkannya untuk semua pengguna production. Sesuaikan rate limit Supabase untuk trafik melalui backend bersama. Aplikasi juga memiliki rate limit per IP/email yang disimpan di Supabase.
 
 Dokumentasi acuan: [email templates Supabase](https://supabase.com/docs/guides/auth/auth-email-templates), [pengelolaan sesi](https://supabase.com/docs/guides/auth/sessions), dan [Admin API](https://supabase.com/docs/reference/javascript/auth-admin-updateuserbyid).
+
+## Migrasi dari dua file SQL lama
+
+Migrasi Auth `20261001000000` dan family sync `20261001010000` telah digabung menjadi `20261002000000_init.sql`.
+
+- **Pernah menjalankan SQL manual:** jalankan seluruh file gabungan di SQL Editor, termasuk jika sebelumnya baru menjalankan Auth. Tabel dan data yang ada tetap dipertahankan; fungsi dan trigger diperbarui.
+- **Memakai Supabase CLI:** jalankan file gabungan di SQL Editor terlebih dahulu. Setelah berhasil, periksa `supabase migration list` pada project yang sesuai. Untuk setiap versi lama yang tercatat di remote, hapus catatan versi tersebut dengan perintah yang sesuai di bawah, lalu tandai versi gabungan sudah diterapkan:
+
+  ```bash
+  # Hanya untuk versi lama yang tercatat di remote:
+  supabase migration repair 20261001000000 --status reverted
+  supabase migration repair 20261001010000 --status reverted
+  # Setelah seluruh SQL gabungan berhasil dijalankan:
+  supabase migration repair 20261002000000 --status applied
+  supabase migration list
+  ```
+
+`migration repair` hanya mengubah riwayat migrasi, bukan menjalankan atau membatalkan SQL. Lihat [dokumentasi riwayat migrasi Supabase](https://supabase.com/docs/guides/deployment/database-migrations). Setelah riwayat sesuai, migrasi berikutnya dapat diterapkan dengan `supabase db push`.
 
 ## Buat admin dan jalankan
 
@@ -72,6 +90,8 @@ npm start
 ## Akun dan admin
 
 Halaman `/#login`, `/#register`, `/#forgot-password`, `/#reset-password`, dan `/#admin` tersedia. Admin dapat mencari pengguna dengan pagination, membuat akun, mengubah nama/email/peran, menonaktifkan/mengaktifkan, serta menghapus akun setelah konfirmasi. Akun yang dibuat admin langsung terkonfirmasi; admin bertanggung jawab menyerahkan password awal kepada pemilik akun.
+
+Form login menampilkan petunjuk huruf besar/kecil, tombol **Lihat / Sembunyikan**, dan indikator Caps Lock. Form daftar dan password baru mencantumkan batas 12–128 karakter. Tautan **Lupa password?** membawa email dari form login; setelah permintaan berhasil, tersedia panduan memeriksa email/spam dan tombol **Kirim ulang tautan**. Pengiriman email tetap menggunakan konfigurasi Supabase di atas.
 
 Peran aplikasi dibaca dari **app_metadata.gkl_role** yang hanya dapat diubah oleh server tepercaya, bukan `user_metadata`. API memverifikasi pengguna melalui Supabase Auth pada setiap request yang membutuhkan akun, kemudian memeriksa izin sesi di database. Sesi Supabase menggunakan cookie HttpOnly, SameSite=Lax, dan Secure pada HTTPS/production. Refresh token dikelola SDK di server; token dan secret tidak dikirim melalui JSON API ke frontend.
 
