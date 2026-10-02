@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { configuredOrigin } from './config.js';
 export class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
@@ -19,8 +20,7 @@ export function password(value) {
   return value;
 }
 export function checkOrigin(req, env) {
-  if (!env.APP_URL) throw new HttpError(503, 'Server belum dikonfigurasi.');
-  if (req.headers.origin !== new URL(env.APP_URL).origin) throw new HttpError(403, 'Asal permintaan tidak diizinkan.');
+  if (req.headers.origin !== configuredOrigin(env, 'APP_URL')) throw new HttpError(403, 'Asal permintaan tidak diizinkan.');
   if (req.headers['x-requested-with'] !== 'GeniusKidsLab') throw new HttpError(403, 'Permintaan tidak diizinkan.');
 }
 export async function readBody(req, maxBytes = 16384) {

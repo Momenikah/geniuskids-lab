@@ -1,5 +1,7 @@
 # Genius Kids Lab — Supabase
 
+Panduan instalasi langkah demi langkah: [Deploy ke Vercel dan Supabase](INSTALL_VERCEL_SUPABASE.md).
+
 Aplikasi pendamping 100 eksperimen sains berbahasa Indonesia. Akun, password, konfirmasi email, dan pemulihan akun menggunakan **Supabase Auth**. Backend Node.js menghubungkan antarmuka dengan Supabase dan membatasi operasi admin. Profil anak, progres, jurnal, dan foto kini tersinkron antarperangkat dalam akun yang sama. Tidak perlu koneksi PostgreSQL langsung atau SMTP di aplikasi.
 
 ## Konfigurasi Supabase

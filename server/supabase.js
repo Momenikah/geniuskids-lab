@@ -2,20 +2,21 @@ import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import { createServerClient, parseCookieHeader, serializeCookieHeader } from '@supabase/ssr';
 import { HttpError } from './security.js';
+import { configuredOrigin, envValue, requiredKey } from './config.js';
 
 export function createAdminClient(env = process.env) {
-  const secret = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!env.SUPABASE_URL || !secret) throw new HttpError(503, 'Konfigurasi Supabase belum lengkap.');
-  return createClient(env.SUPABASE_URL, secret, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  const url = configuredOrigin(env, 'SUPABASE_URL');
+  const secret = requiredKey(env, 'SUPABASE_SECRET_KEY', 'SUPABASE_SERVICE_ROLE_KEY');
+  return createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 }
 export function createClients(req, res, env = process.env) {
-  const key = env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY;
-  if (!env.SUPABASE_URL || !key) throw new HttpError(503, 'Konfigurasi Supabase belum lengkap.');
+  const url = configuredOrigin(env, 'SUPABASE_URL');
+  const key = requiredKey(env, 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_ANON_KEY');
   const jar = new Map(parseCookieHeader(req.headers.cookie || '').map(({ name, value }) => [name, value]));
   const pending = new Map();
-  const client = createServerClient(env.SUPABASE_URL, key, {
+  const client = createServerClient(url, key, {
     cookieOptions: { name: 'gkl-supabase-auth', path: '/', httpOnly: true, sameSite: 'lax',
-      secure: !!(env.NODE_ENV === 'production' || env.VERCEL || env.APP_URL?.startsWith('https://')) },
+      secure: !!(env.NODE_ENV === 'production' || env.VERCEL || envValue(env, 'APP_URL').startsWith('https://')) },
     cookies: {
       getAll: () => [...jar].map(([name, value]) => ({ name, value })),
       setAll(cookies) {

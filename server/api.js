@@ -1,5 +1,6 @@
 import { validateFamily, MAX_FAMILY_BYTES } from '../family-data.js';
 import { createClients, unwrap } from './supabase.js';
+import { configuredOrigin } from './config.js';
 import { HttpError, digest, publicUser, email, name, password, checkOrigin, readBody } from './security.js';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -86,7 +87,7 @@ export function createHandler({ clients = createClients, env = process.env } = {
         await rateLimit(admin, `${action}:email:${address}`, action === 'forgot-password' ? 3 : 10);
         if (action === 'register') {
           const data = unwrap(await client.auth.signUp({ email: address, password: password(body.password),
-            options: { data: { name: name(body.name) }, emailRedirectTo: new URL(env.APP_URL).origin } }));
+            options: { data: { name: name(body.name) }, emailRedirectTo: configuredOrigin(env, 'APP_URL') } }));
           if (!data.session) return reply(201, { user: null, confirmationRequired: true, message: 'Periksa email Anda dan klik tautan konfirmasi sebelum masuk. Jika email sudah terdaftar, silakan login atau gunakan lupa password.' });
           return reply(201, { user: await allowSession(admin, data) });
         }
@@ -99,7 +100,7 @@ export function createHandler({ clients = createClients, env = process.env } = {
           }
           return reply(200, { user: await allowSession(admin, result.data) });
         }
-        unwrap(await client.auth.resetPasswordForEmail(address, { redirectTo: new URL(env.APP_URL).origin }));
+        unwrap(await client.auth.resetPasswordForEmail(address, { redirectTo: configuredOrigin(env, 'APP_URL') }));
         return reply(200, { message: 'Jika email terdaftar dan aktif, tautan reset password akan dikirim. Periksa juga folder spam.' });
       }
       if (path === '/api/auth/logout' && method === 'POST') {
