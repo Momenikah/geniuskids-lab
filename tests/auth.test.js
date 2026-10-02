@@ -21,24 +21,29 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async ()=>{ if(server) await new Promise(resolve=>server.close(resolve)); if(fake) await fake.close(); });
-test('anonymous session, validation and CSRF protection', async () => {
+test('public registration is blocked including forged admin metadata', async () => {
   const result = await request('auth/me'); assert.equal(result.data.user,null); assert.match(result.cache,/no-store/);
-  assert.equal((await request('auth/register',{method:'POST',body:{},origin:'https://evil.example'})).status,403);
-  assert.equal((await request('auth/register',{method:'POST',body:{},csrf:false})).status,403);
-  assert.equal((await request('auth/register',{method:'POST',body:{}})).status,400);
-  assert.equal((await request('auth/register',{method:'POST',body:{email:'valid@example.test',name:'Name',password:'short'}})).status,400);
+  for (const options of [{}, {origin:'https://evil.example'}, {csrf:false}]) {
+    const blocked=await request('auth/register',{method:'POST',body:{email:'blocked@example.test',name:'Name',password:secret,role:'admin',app_metadata:{gkl_role:'admin'}},...options});
+    assert.equal(blocked.status,403);
+  }
+  assert.equal((await fake.db.query("SELECT id FROM auth.users WHERE email='blocked@example.test'")).rows.length,0);
 });
-test('Supabase registration normalizes email, ignores role escalation and sets HttpOnly cookies', async () => {
-  const result = await request('auth/register',{method:'POST',body:{email:' FAMILY@EXAMPLE.TEST ',name:'Keluarga Uji',password:secret,role:'admin',app_metadata:{gkl_role:'admin'}}});
-  assert.equal(result.status,201,JSON.stringify(result.data)); assert.equal(result.data.user.role,'user'); assert.equal(result.data.user.email,'family@example.test');
+test('existing family login sets HttpOnly cookies and preserves user role', async () => {
+  await fake.createUser({email:'family@example.test',password:secret,user_metadata:{name:'Keluarga Uji'}});
+  const result=await login(' FAMILY@EXAMPLE.TEST ');
+  assert.equal(result.status,200,JSON.stringify(result.data)); assert.equal(result.data.user.role,'user'); assert.equal(result.data.user.email,'family@example.test');
   assert.ok(result.cookies.some(cookie=>cookie.includes('HttpOnly') && cookie.includes('SameSite=Lax')));
   assert.equal(result.data.access_token,undefined); userCookie=result.cookie; userId=result.data.user.id;
   assert.equal((await request('auth/me',{cookie:userCookie})).data.user.id,userId);
-  assert.equal((await request('auth/register',{method:'POST',body:{email:'family@example.test',name:'Other',password:secret}})).status,409);
 });
 test('admin routes reject anonymous and ordinary users; invalid login is denied', async () => {
   assert.equal((await request('admin/users')).status,401);
   assert.equal((await request('admin/users',{cookie:userCookie})).status,403);
+  for (const cookie of [undefined, userCookie]) {
+    assert.equal((await request('admin/users',{method:'POST',cookie,body:{name:'Denied',email:'denied@example.test',password:secret,role:'admin'}})).status,cookie ? 403 : 401);
+  }
+  assert.equal((await fake.db.query("SELECT id FROM auth.users WHERE email='denied@example.test'")).rows.length,0);
   assert.equal((await request(`admin/users/${userId}`,{method:'DELETE',body:{},cookie:userCookie})).status,403);
   assert.equal((await login('family@example.test','wrong')).status,401);
   const result=await login('admin@example.test'); assert.equal(result.status,200); adminCookie=result.cookie;
@@ -64,17 +69,14 @@ test('self protection and database-level last-admin guard', async () => {
   assert.equal((await request(`admin/users/${me.id}`,{method:'PATCH',cookie:adminCookie,body:{name:me.name,email:me.email,role:'user',active:true}})).status,400);
   await assert.rejects(fake.db.query('DELETE FROM auth.users WHERE id=$1',[me.id]), /gkl_last_admin/);
 });
-test('Supabase email confirmation required and one-time token establishes session', async () => {
-  fake.setConfirmEmail(true);
-  try {
-    const registered=await request('auth/register',{method:'POST',body:{email:'confirm@example.test',name:'Confirm',password:secret}});
-    assert.equal(registered.status,201); assert.equal(registered.data.confirmationRequired,true); assert.equal(registered.data.user,null);
-    const unconfirmed=await login('confirm@example.test'); assert.equal(unconfirmed.status,401); assert.match(unconfirmed.data.error,/Konfirmasi email/);
-    const token=fake.outbox.at(-1).token;
-    const verified=await request('auth/verify',{method:'POST',body:{type:'email',token}});
-    assert.equal(verified.status,200,JSON.stringify(verified.data)); assert.equal(verified.data.user.email,'confirm@example.test');
-    assert.equal((await request('auth/verify',{method:'POST',body:{type:'email',token}})).status,400);
-  } finally { fake.setConfirmEmail(false); }
+test('legacy unconfirmed account can still confirm with a one-time token', async () => {
+  const account=await fake.createUser({email:'confirm@example.test',user_metadata:{name:'Confirm'},password:secret},false);
+  fake.sendEmail(account,'email');
+  const unconfirmed=await login('confirm@example.test'); assert.equal(unconfirmed.status,401); assert.match(unconfirmed.data.error,/Konfirmasi email/);
+  const token=fake.outbox.at(-1).token;
+  const verified=await request('auth/verify',{method:'POST',body:{type:'email',token}});
+  assert.equal(verified.status,200,JSON.stringify(verified.data)); assert.equal(verified.data.user.email,'confirm@example.test');
+  assert.equal((await request('auth/verify',{method:'POST',body:{type:'email',token}})).status,400);
 });
 test('recovery email, OTP verification, password update and revocation of all app sessions', async () => {
   const known=await request('auth/forgot-password',{method:'POST',body:{email:'family@example.test'}});

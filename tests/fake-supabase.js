@@ -10,7 +10,7 @@ export async function fakeSupabase({ confirmEmail = false, appUrl = 'http://loca
   const shape = u => ({ id: u.id, email: u.email, role: 'authenticated', aud: 'authenticated', app_metadata: u.raw_app_meta_data, user_metadata: u.raw_user_meta_data, created_at: u.created_at, banned_until: u.banned_until, email_confirmed_at: u.email_confirmed_at, identities: [{ id: u.id, provider: 'email' }] });
   async function createUser(values, confirmed = true) {
     const id = randomUUID();
-    await db.query('INSERT INTO auth.users(id,email,encrypted_password,raw_user_meta_data,raw_app_meta_data,email_confirmed_at) VALUES($1,$2,$3,$4,$5,$6)', [id, values.email, digest(values.password), values.user_metadata || values.data || {}, values.app_metadata || {}, confirmed ? new Date().toISOString() : null]);
+    await db.query('INSERT INTO auth.users(id,email,encrypted_password,raw_user_meta_data,raw_app_meta_data,email_confirmed_at) VALUES($1,$2,$3,$4,$5,$6)', [id, values.email, digest(values.password), values.user_metadata || values.data || {}, values.app_metadata || { gkl_role: 'user' }, confirmed ? new Date().toISOString() : null]);
     return userById(id);
   }
   async function session(user, sid = randomUUID()) {
@@ -49,7 +49,7 @@ export async function fakeSupabase({ confirmEmail = false, appUrl = 'http://loca
       const valid = user && liveSession && (!user.banned_until || new Date(user.banned_until) <= new Date());
       if (path === '/auth/v1/signup') {
         if (await userByEmail(body.email)) return reply(422, { code: 'user_already_exists', msg: 'exists' });
-        const created = await createUser(body, !confirmEmail);
+        const created = await createUser({ ...body, app_metadata: {} }, !confirmEmail);
         if (confirmEmail) { sendEmail(created, 'email'); return reply(200, shape(created)); }
         return reply(200, await session(created));
       }
@@ -112,7 +112,7 @@ export async function fakeSupabase({ confirmEmail = false, appUrl = 'http://loca
     } catch (error) { reply(500, { message: error.message, msg: error.message, code: error.code || 'test_error' }); }
   });
   await new Promise((resolve,reject) => { server.once('error',reject); server.listen(0,'127.0.0.1',resolve); });
-  return { db, outbox, otps, createUser, tokens, refreshes, setConfirmEmail(value) { confirmEmail = value; },
+  return { db, outbox, otps, createUser, sendEmail, tokens, refreshes, setConfirmEmail(value) { confirmEmail = value; },
     env: { SUPABASE_URL: `http://127.0.0.1:${server.address().port}`, SUPABASE_PUBLISHABLE_KEY: 'test-anon-key', SUPABASE_SECRET_KEY: 'test-service-key', APP_URL: appUrl },
     async close() { await new Promise(resolve=>server.close(resolve)); await db.end(); },
   };

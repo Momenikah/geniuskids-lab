@@ -7,7 +7,7 @@ test('merged migration can be reapplied without changing accounts, sessions or f
   const db = await testDatabase();
   try {
     const userId = crypto.randomUUID(), sessionId = crypto.randomUUID();
-    await db.query('INSERT INTO auth.users(id,email) VALUES($1,$2)', [userId, 'migration@example.test']);
+    await db.query(`INSERT INTO auth.users(id,email,raw_app_meta_data) VALUES($1,$2,'{"gkl_role":"user"}')`, [userId, 'migration@example.test']);
     await db.query('INSERT INTO auth.sessions(id,user_id) VALUES($1,$2)', [sessionId, userId]);
     await db.query('SELECT public.gkl_allow_session($1,$2)', [sessionId, userId]);
     await db.query('SELECT public.gkl_rate_limit($1,$2)', ['migration-test', 10]);

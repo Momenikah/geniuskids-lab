@@ -52,7 +52,8 @@ Secret key atau service-role key hanya boleh dipakai oleh server. Jangan menaruh
 2. Buka file [supabase/migrations/20261002000000_init.sql](supabase/migrations/20261002000000_init.sql) di komputer.
 3. Salin **seluruh isi file**, dari `BEGIN;` sampai `COMMIT;`, ke SQL Editor.
 4. Klik **Run** dan pastikan tidak ada error.
-5. Periksa schema `public` melalui Table Editor. Tabel berikut harus tersedia:
+5. Jalankan juga seluruh isi [20261002010000_admin_only_registration.sql](supabase/migrations/20261002010000_admin_only_registration.sql) untuk menutup pendaftaran langsung.
+6. Periksa schema `public` melalui Table Editor. Tabel berikut harus tersedia:
 
    - `gkl_rate_limits`
    - `gkl_session_access`
@@ -71,7 +72,7 @@ SQL gabungan dapat dijalankan ulang tanpa menghapus data aplikasi. Jika project 
 
 Di **Authentication → Sign In / Providers**, buka pengaturan Email:
 
-- Aktifkan login Email dan pendaftaran pengguna baru jika aplikasi dibuka untuk registrasi umum.
+- Aktifkan login Email. Nonaktifkan **Allow new users to sign up** di pengaturan Auth; akun baru hanya dibuat oleh admin aplikasi.
 - Aktifkan **Confirm email** agar pengguna mengonfirmasi alamat email sebelum login.
 - Atur minimum panjang password menjadi **12 karakter**. Aplikasi menerima password sepanjang 12–128 karakter.
 
@@ -114,7 +115,7 @@ Penjelasan variabel tersedia di [dokumentasi template email Supabase](https://su
 
 Di pengaturan **Authentication → Email / SMTP Settings**, aktifkan **Custom SMTP**, lalu isi host, port, username, password, alamat pengirim, dan nama pengirim sesuai penyedia email. Selesaikan verifikasi domain pengirim pada penyedia tersebut.
 
-SMTP bawaan Supabase membatasi penerima ke anggota tim project dan memiliki batas kirim yang ketat. Gunakan Custom SMTP sebelum membuka registrasi untuk pengguna umum. Kredensial SMTP diatur di Supabase; tidak perlu menambahkannya ke `.env` aplikasi atau Vercel. Lihat [panduan Custom SMTP Supabase](https://supabase.com/docs/guides/auth/auth-smtp).
+SMTP bawaan Supabase membatasi penerima ke anggota tim project dan memiliki batas kirim yang ketat. Gunakan Custom SMTP untuk pengiriman reset password kepada pengguna. Kredensial SMTP diatur di Supabase; tidak perlu menambahkannya ke `.env` aplikasi atau Vercel. Lihat [panduan Custom SMTP Supabase](https://supabase.com/docs/guides/auth/auth-smtp).
 
 ## 5. Buat akun administrator
 
@@ -136,7 +137,7 @@ Jika berhasil, terminal menampilkan pesan `Administrator Supabase dibuat`. Akun 
 
 Hapus nilai `ADMIN_PASSWORD` dari `.env` setelah selesai. Variabel `ADMIN_*` hanya digunakan untuk bootstrap lokal dan tidak perlu dipasang di Vercel. Jangan masukkan perintah `admin:create` ke Build Command karena pembuatan admin hanya perlu dilakukan sekali untuk akun tersebut.
 
-Email yang sudah terdaftar tidak ditimpa atau otomatis dipromosikan oleh script. Gunakan email baru untuk bootstrap. Pengguna pertama yang mendaftar melalui website juga tidak otomatis menjadi admin.
+Email yang sudah terdaftar tidak ditimpa atau otomatis dipromosikan oleh script. Gunakan email baru untuk bootstrap. Untuk akun `wahib.chelsea@gmail.com` yang sudah terdaftar, jalankan [SQL pemulihan admin](supabase/admin/restore-wahib-admin.sql), lalu keluar dan login kembali. SQL hanya mengubah role akun yang sudah terkonfirmasi; password dan jurnal tetap utuh. Buka `https://geniuskids-lab.vercel.app/#admin` untuk mengelola pengguna. Jangan menjalankan script pemulihan ini untuk instalasi milik akun lain.
 
 ## 6. Uji aplikasi di komputer
 
@@ -146,7 +147,7 @@ Pastikan `.env` lokal masih memakai `APP_URL=http://localhost:5173`, lalu jalank
 npm run dev
 ```
 
-Buka `http://localhost:5173`, masuk dengan akun admin, lalu buka `http://localhost:5173/#admin`. Uji juga pendaftaran akun biasa, konfirmasi email, dan lupa password.
+Buka `http://localhost:5173`, masuk dengan akun admin, lalu buka `http://localhost:5173/#admin`. Uji pembuatan akun melalui **Tambah pengguna**, login pengguna biasa, penolakan pendaftaran publik, dan lupa password.
 
 Untuk memeriksa hasil build lokal, hentikan server dev dengan `Ctrl+C`, lalu jalankan:
 
@@ -216,7 +217,7 @@ Preview Vercel membutuhkan `APP_URL` khusus yang cocok dengan domain preview, em
 - [ ] Halaman utama, gambar, dan materi eksperimen tampil.
 - [ ] Dalam browser tanpa sesi, `https://DOMAIN_ANDA/api/auth/me` mengembalikan JSON `{"user":null}`, bukan halaman HTML atau 404. Ini hanya pemeriksaan awal routing, bukan bukti migrasi database lengkap.
 - [ ] Admin dapat login dan membuka `/#admin`.
-- [ ] Pengguna biasa dapat mendaftar, menerima email, menekan tautan dan tombol konfirmasi, lalu login.
+- [ ] Admin dapat membuat pengguna melalui **Tambah pengguna**; akun tersebut dapat login. Pendaftaran publik melalui UI/API aplikasi maupun Supabase langsung ditolak.
 - [ ] Alur lupa password mengirim email ke domain production dan password baru dapat digunakan.
 - [ ] Pengguna biasa tidak dapat membuka fungsi admin.
 - [ ] Profil anak, progres, jurnal, dan foto tersinkron ketika login dengan akun yang sama pada perangkat kedua.
@@ -236,11 +237,12 @@ Pengujian otomatis tambahan tersedia dalam [TESTING.md](TESTING.md). Tes lokal m
 | `Layanan belum tersedia. Periksa konfigurasi Supabase atau coba lagi nanti.` | Pesan umum untuk exception backend. Perbarui kode agar kesalahan format URL ditampilkan secara spesifik. Jika masih muncul, periksa log function; pesan ini saja belum menentukan penyebabnya. |
 | `Asal permintaan tidak diizinkan` | Origin tab browser harus sama dengan `APP_URL`, termasuk protokol dan port. Pastikan membuka domain utama, bukan URL deployment lain. |
 | `Layanan Supabase belum tersedia` | Status project, kecocokan URL/key, seluruh migrasi SQL, dan log function Vercel. Pesan ini juga bisa menutupi error RPC/database. |
-| Registrasi atau login gagal setelah database baru dibuat | Jalankan seluruh migrasi gabungan dan pastikan fungsi RPC serta trigger berhasil dibuat. |
+| Pembuatan akun oleh admin atau login gagal setelah database baru dibuat | Jalankan seluruh migrasi dan pastikan fungsi RPC serta trigger berhasil dibuat. |
 | Email tidak terkirim / alamat tidak diizinkan | Custom SMTP, verifikasi pengirim, pembatasan penerima SMTP bawaan, folder spam, serta log Auth Supabase. |
 | Tautan email menuju localhost/domain yang salah | `APP_URL` pada environment terkait, Site URL, Redirect URLs, dan variabel `RedirectTo` dalam template. Setelah perbaikan, minta email baru. |
 | Tautan konfirmasi/reset tidak valid | Pastikan kedua template sesuai langkah 4; gunakan email terbaru dan token yang belum dipakai atau kedaluwarsa. |
 | Email admin sudah digunakan | Script tidak menimpa akun lama. Gunakan email baru untuk bootstrap admin. |
+| Login berhasil tetapi menu Admin tidak muncul | Role harus berada di `app_metadata.gkl_role=admin`, bukan `user_metadata` atau environment `ADMIN_EMAIL`. Untuk akun yang sudah ada, jalankan SQL pemulihan admin lalu keluar/login kembali. |
 | Login lokal tidak bertahan | Gunakan `APP_URL=http://localhost:5173` untuk lokal; jangan mengaktifkan `NODE_ENV=production` atau variabel `VERCEL` pada HTTP lokal. |
 | `Terlalu banyak percobaan` | Tunggu sebelum mencoba lagi dan periksa rate limit Auth Supabase. Aplikasi juga membatasi percobaan melalui database. |
 

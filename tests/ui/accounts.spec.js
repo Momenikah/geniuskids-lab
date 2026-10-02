@@ -1,20 +1,14 @@
 import { test, expect } from '@playwright/test';
 
-test('register, local journal, logout, reset via email, login, and admin denial', async ({ page, request }) => {
+test('managed account login, local journal, logout, reset via email, login, and admin denial', async ({ page, request }) => {
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Selamat datang kembali' })).toBeVisible();
   await page.screenshot({ path: 'test-results/login-desktop.png', fullPage: true });
-  await page.getByRole('link', { name: 'Daftar sekarang' }).click();
-  await page.getByLabel('Nama orang tua').fill('Keluarga Browser');
+  await expect(page.getByRole('link', { name: 'Daftar sekarang' })).toHaveCount(0);
   await page.getByLabel('Alamat email').fill('browser@example.test');
   await page.getByLabel('Password', { exact: true }).fill('browser-family-password');
-  await page.getByLabel('Konfirmasi password', { exact: true }).fill('different-password');
-  await page.getByRole('button', { name: 'Buat akun' }).click();
-  await expect(page.getByRole('alert')).toContainText('Konfirmasi password belum cocok');
-  await page.getByLabel('Konfirmasi password', { exact: true }).fill('browser-family-password');
-  await page.getByRole('button', { name: 'Buat akun' }).click();
-  await confirmSignup(page, request, 'browser@example.test');
+  await page.getByRole('button', { name: 'Masuk ke lab' }).click();
   await expect(page.getByRole('heading', { name: 'Halo, Ilmuwan Cilik!' })).toBeVisible();
   await page.goto('/#admin');
   await expect(page.getByRole('heading', { name: 'Akses terbatas' })).toBeVisible();
@@ -29,13 +23,9 @@ test('register, local journal, logout, reset via email, login, and admin denial'
   await page.goto('/#parent');
   await page.getByRole('button', { name: 'Keluar', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Selamat datang kembali' })).toBeVisible();
-  await page.getByRole('link', { name: 'Daftar sekarang' }).click();
-  await page.getByLabel('Nama orang tua').fill('Keluarga Kedua');
   await page.getByLabel('Alamat email').fill('second@example.test');
   await page.getByLabel('Password', { exact: true }).fill('second-family-password');
-  await page.getByLabel('Konfirmasi password', { exact: true }).fill('second-family-password');
-  await page.getByRole('button', { name: 'Buat akun' }).click();
-  await confirmSignup(page, request, 'second@example.test');
+  await page.getByRole('button', { name: 'Masuk ke lab' }).click();
   await expect(page.getByRole('heading', { name: 'Halo, Ilmuwan Cilik!' })).toBeVisible();
   await page.goto('/#journal');
   await expect(page.getByRole('heading', { name: 'Halaman pertama menantimu' })).toBeVisible();
@@ -100,23 +90,17 @@ test('admin creates, searches, edits, disables and deletes a user', async ({ pag
   expect(errors).toEqual([]);
 });
 
-test('mobile login fits viewport and has working register navigation', async ({ page }) => {
+test('mobile login fits viewport and old registration links show admin guidance', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/#login');
   await expect(page.getByRole('button', { name: 'Masuk ke lab' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/login-mobile.png', fullPage: true });
-  await page.getByRole('link', { name: 'Daftar sekarang' }).click();
-  await expect(page.getByLabel('Nama orang tua')).toBeVisible();
+  await page.goto('/#register');
+  await expect(page).toHaveURL(/#login$/);
+  await expect(page.getByText('Belum punya akun? Hubungi administrator untuk pendaftaran.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Buat akun' })).toHaveCount(0);
 });
-
-async function confirmSignup(page, request, email) {
-  await expect(page.locator('.form-message.success')).toContainText('Periksa email');
-  const outbox = await (await request.get('/api/test-outbox')).json();
-  const confirmation = outbox.findLast(mail => mail.email === email && mail.type === 'email');
-  await page.goto(confirmation.url);
-  await page.getByRole('button', { name: 'Konfirmasi email', exact: true }).click();
-}
 
 test('password guidance, visibility and Caps Lock work without submitting login', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
@@ -137,12 +121,12 @@ test('password guidance, visibility and Caps Lock work without submitting login'
   await expect(page.getByText('Caps Lock aktif.')).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/password-hints-mobile.png', fullPage: true });
-  await page.getByRole('link', { name: 'Daftar sekarang' }).click();
-  await expect(page.getByLabel('Password', { exact: true })).toHaveAccessibleDescription(/12–128 karakter/);
+  await page.goto('/#reset-password');
+  await expect(page.getByLabel('Password baru', { exact: true })).toHaveAccessibleDescription(/12–128 karakter/);
   await page.getByLabel('Konfirmasi password', { exact: true }).fill('confirm-password');
   await page.getByRole('button', { name: 'Tampilkan konfirmasi password', exact: true }).click();
   await expect(page.getByLabel('Konfirmasi password', { exact: true })).toHaveAttribute('type', 'text');
-  await expect(page.getByLabel('Password', { exact: true })).toHaveAttribute('type', 'password');
+  await expect(page.getByLabel('Password baru', { exact: true })).toHaveAttribute('type', 'password');
 });
 
 test('forgot password carries email from failed login and supports retry after a network error', async ({ page }) => {
