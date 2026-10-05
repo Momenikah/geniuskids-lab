@@ -60,15 +60,12 @@ function bindPasswordFields(form) {
   });
 }
 export function renderAuthPage(page) {
-  if (page === 'register') {
-    history.replaceState(null, '', '/#login');
-    page = 'login';
-  }
+  const register = page === 'register';
   const forgot = page === 'forgot-password', reset = page === 'reset-password';
-  const heading = forgot ? 'Lupa password?' : reset ? 'Buat password baru' : 'Selamat datang kembali';
-  const description = forgot ? 'Masukkan email akun Anda. Kami akan mengirimkan tautan untuk mengatur ulang password.' : reset ? 'Gunakan password baru dengan minimal 12 karakter.' : 'Masuk dan lanjutkan penemuan bersama si kecil.';
+  const heading = register ? 'Buat akun orang tua' : forgot ? 'Lupa password?' : reset ? 'Buat password baru' : 'Selamat datang kembali';
+  const description = register ? 'Daftar mandiri dan langsung mulai menjelajah. Akun aktif tanpa menunggu persetujuan admin.' : forgot ? 'Masukkan email akun Anda. Kami akan mengirimkan tautan untuk mengatur ulang password.' : reset ? 'Gunakan password baru dengan minimal 12 karakter.' : 'Masuk dan lanjutkan penemuan bersama si kecil.';
   document.title = `${heading} · Genius Kids Lab`;
-  $('#app').innerHTML = `<main class="auth-layout"><section class="auth-story"><a class="auth-brand" href="#login"><img src="/assets/logo.png" alt="Genius Kids"><span>LAB<span class="branddot">•</span></span></a><div><p class="eyebrow">RASA INGIN TAHU DIMULAI DI SINI</p><h1>Ide kecil.<br>Penemuan <em>besar.</em></h1><p>Temani si kecil bertanya, mencoba, dan menemukan dunia sains yang seru.</p><img class="auth-illustration" src="/assets/workshop.webp" alt="Anak bereksperimen dengan kertas"><div class="auth-facts"><span>100 misi sains</span><span>10 dunia eksplorasi</span></div></div><small>Genius Kids Lab · Belajar dengan mencoba</small></section><section class="auth-form-area"><div class="auth-card"><p class="eyebrow">AKUN ORANG TUA</p><h2>${heading}</h2><p class="muted">${description}</p><form id="auth-form">${reset ? '' : '<label>Alamat email<input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="nama@email.com"></label>'}${forgot ? '' : `${passwordField('password', reset ? 'Password baru' : 'Password', reset)}${reset ? passwordField('confirmPassword', 'Konfirmasi password', true) : '<a class="forgot-link" href="#forgot-password">Lupa password?</a>'}`}<p data-message class="form-message error" role="alert">${esc(startupError)}</p>${forgot ? '<div class="recovery-help" hidden><strong>Langkah berikutnya</strong><p>Buka email dari Genius Kids Lab, lalu pilih tautan reset untuk membuat password baru.</p><p>Belum menerima email? Periksa folder spam dan alamat email di atas. Jika meminta ulang, gunakan tautan dari email terbaru.</p></div>' : ''}<button type="submit" class="button big">${forgot ? 'Kirim tautan reset' : reset ? 'Simpan password baru' : 'Masuk ke lab'} <span aria-hidden="true">→</span></button></form><p class="auth-switch">${forgot || reset ? '<a href="#login">← Kembali ke login</a>' : 'Belum punya akun? Hubungi administrator untuk pendaftaran.'}</p><p class="auth-note">Akun digunakan oleh orang tua atau pendamping. Profil anak, progres, dan jurnal tersinkron privat ke akun saat online.</p></div></section></main>`;
+  $('#app').innerHTML = `<main class="auth-layout"><section class="auth-story"><a class="auth-brand" href="#login"><img src="/assets/logo.png" alt="Genius Kids"><span>LAB<span class="branddot">•</span></span></a><div><p class="eyebrow">RASA INGIN TAHU DIMULAI DI SINI</p><h1>Ide kecil.<br>Penemuan <em>besar.</em></h1><p>Temani si kecil bertanya, mencoba, dan menemukan dunia sains yang seru.</p><img class="auth-illustration" src="/assets/workshop.webp" alt="Anak bereksperimen dengan kertas"><div class="auth-facts"><span>100 misi sains</span><span>10 dunia eksplorasi</span></div></div><small>Genius Kids Lab · Belajar dengan mencoba</small></section><section class="auth-form-area"><div class="auth-card"><p class="eyebrow">AKUN ORANG TUA</p><h2>${heading}</h2><p class="muted">${description}</p><form id="auth-form">${register ? '<label>Nama orang tua<input name="name" type="text" autocomplete="name" required maxlength="80" placeholder="Nama Anda"></label>' : ''}${reset ? '' : '<label>Alamat email<input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="nama@email.com"></label>'}${forgot ? '' : `${passwordField('password', reset ? 'Password baru' : 'Password', reset || register)}${reset || register ? passwordField('confirmPassword', 'Konfirmasi password', true) : '<a class="forgot-link" href="#forgot-password">Lupa password?</a>'}`}<p data-message class="form-message error" role="alert">${esc(startupError)}</p>${forgot ? '<div class="recovery-help" hidden><strong>Langkah berikutnya</strong><p>Buka email dari Genius Kids Lab, lalu pilih tautan reset untuk membuat password baru.</p><p>Belum menerima email? Periksa folder spam dan alamat email di atas. Jika meminta ulang, gunakan tautan dari email terbaru.</p></div>' : ''}<button type="submit" class="button big">${register ? 'Daftar akun' : forgot ? 'Kirim tautan reset' : reset ? 'Simpan password baru' : 'Masuk ke lab'} <span aria-hidden="true">→</span></button></form><p class="auth-switch">${forgot || reset ? '<a href="#login">← Kembali ke login</a>' : register ? 'Sudah punya akun? <a href="#login">Masuk ke lab</a>' : 'Belum punya akun? <a href="#register">Daftar akun</a>'}</p><p class="auth-note">Akun digunakan oleh orang tua atau pendamping. Profil anak, progres, dan jurnal tersinkron privat ke akun saat online.</p></div></section></main>`;
   const form = $('#auth-form');
   bindPasswordFields(form);
   if (forgot) {
@@ -87,8 +84,16 @@ export function renderAuthPage(page) {
     event.preventDefault();
     submit(form, async () => {
       const values = Object.fromEntries(new FormData(form));
-      if ((reset) && values.password !== values.confirmPassword) throw new Error('Konfirmasi password belum cocok.');
-      if (reset) {
+      if ((reset || register) && values.password !== values.confirmPassword) throw new Error('Konfirmasi password belum cocok.');
+      if (register) {
+        const data = await api('auth/register', { method: 'POST', body: { name: values.name, email: values.email, password: values.password } });
+        history.replaceState(null, '', '/#login');
+        renderAuthPage('login');
+        const loginForm = $('#auth-form');
+        loginForm.elements.email.value = values.email.trim().toLowerCase();
+        message(loginForm, data.message, true);
+        loginForm.elements.password.focus();
+      } else if (reset) {
         const data = await api('auth/reset-password', { method: 'POST', body: values });
         user = null; form.reset(); message(form, data.message, true);
         form.querySelectorAll('.password-field').forEach(field => { field.hidden = true; });

@@ -5,7 +5,7 @@ test('managed account login, local journal, logout, reset via email, login, and 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Selamat datang kembali' })).toBeVisible();
   await page.screenshot({ path: 'test-results/login-desktop.png', fullPage: true });
-  await expect(page.getByRole('link', { name: 'Daftar sekarang' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Daftar akun' })).toBeVisible();
   await page.getByLabel('Alamat email').fill('browser@example.test');
   await page.getByLabel('Password', { exact: true }).fill('browser-family-password');
   await page.getByRole('button', { name: 'Masuk ke lab' }).click();
@@ -104,16 +104,50 @@ test('admin creates, searches, edits, disables and deletes a user', async ({ pag
   expect(errors).toEqual([]);
 });
 
-test('mobile login fits viewport and old registration links show admin guidance', async ({ page }) => {
+test('mobile self-registration validates fields and creates an immediately usable account', async ({ page, request }) => {
+  const errors=[]; page.on('pageerror', error=>errors.push(error.message));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/#login');
-  await expect(page.getByRole('button', { name: 'Masuk ke lab' })).toBeVisible();
+  await page.getByRole('link', { name: 'Daftar akun' }).click();
+  await expect(page).toHaveURL(/#register$/);
+  await expect(page.getByRole('heading', { name: 'Buat akun orang tua' })).toBeVisible();
+  await page.reload();
+  await page.getByLabel('Nama orang tua').fill('Keluarga Mandiri');
+  await page.getByLabel('Alamat email').fill('self-ui@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('self-service-password');
+  await page.getByLabel('Konfirmasi password', { exact: true }).fill('different-password');
+  await page.getByRole('button', { name: 'Daftar akun' }).click();
+  await expect(page.getByRole('alert')).toContainText('Konfirmasi password belum cocok');
+  await page.getByLabel('Konfirmasi password', { exact: true }).fill('self-service-password');
+  await page.route('**/api/auth/register', route=>route.abort(), {times:1});
+  await page.getByRole('button', { name: 'Daftar akun' }).click();
+  await expect(page.getByRole('alert')).toContainText('Periksa koneksi internet');
+  await expect(page.getByLabel('Nama orang tua')).toHaveValue('Keluarga Mandiri');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: 'test-results/login-mobile.png', fullPage: true });
-  await page.goto('/#register');
+  await page.screenshot({ path: 'test-results/register-mobile.png', fullPage: true });
+  await page.getByRole('button', { name: 'Daftar akun' }).click();
   await expect(page).toHaveURL(/#login$/);
-  await expect(page.getByText('Belum punya akun? Hubungi administrator untuk pendaftaran.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Buat akun' })).toHaveCount(0);
+  await expect(page.locator('.form-message.success')).toContainText('langsung aktif');
+  await expect(page.getByLabel('Alamat email')).toHaveValue('self-ui@example.test');
+  await expect(page.getByLabel('Password', { exact: true })).toBeEmpty();
+  const outbox=await (await request.get('/api/test-outbox')).json();
+  expect(outbox.filter(mail=>mail.email==='self-ui@example.test')).toHaveLength(0);
+  await page.getByLabel('Password', { exact: true }).fill('self-service-password');
+  await page.getByRole('button', { name: 'Masuk ke lab' }).click();
+  await expect(page.getByRole('heading', { name: 'Halo, Ilmuwan Cilik!' })).toBeVisible();
+  await page.goto('/#admin');
+  await expect(page.getByRole('heading', { name: 'Akses terbatas' })).toBeVisible();
+  await page.goto('/#parent');
+  await page.getByRole('button', { name: 'Keluar', exact: true }).click();
+  await page.getByRole('link', { name: 'Daftar akun' }).click();
+  await page.getByLabel('Nama orang tua').fill('Duplicate');
+  await page.getByLabel('Alamat email').fill('self-ui@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('self-service-password');
+  await page.getByLabel('Konfirmasi password', { exact: true }).fill('self-service-password');
+  await page.getByRole('button', { name: 'Daftar akun' }).click();
+  await expect(page.getByRole('alert')).toContainText('Email sudah digunakan');
+  await expect(page.getByRole('button', { name: 'Daftar akun' })).toBeEnabled();
+  expect(errors).toEqual([]);
 });
 
 test('password guidance, visibility and Caps Lock work without submitting login', async ({ page }) => {

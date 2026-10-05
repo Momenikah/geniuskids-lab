@@ -73,8 +73,8 @@ SQL gabungan dapat dijalankan ulang tanpa menghapus data aplikasi. Jika project 
 
 Di **Authentication → Sign In / Providers**, buka pengaturan Email:
 
-- Aktifkan login Email. Nonaktifkan **Allow new users to sign up** di pengaturan Auth; akun baru hanya dibuat oleh admin aplikasi.
-- Aktifkan **Confirm email** agar pengguna mengonfirmasi alamat email sebelum login.
+- Aktifkan login Email. Nonaktifkan **Allow new users to sign up** di pengaturan Auth; pendaftaran mandiri berjalan melalui API aplikasi, yang membuat akun langsung aktif menggunakan Admin API di server. Pengaturan ini menutup pendaftaran langsung ke Supabase agar validasi dan rate limit aplikasi tetap berlaku.
+- **Confirm email** boleh tetap aktif untuk alur Auth lain. Pendaftaran melalui aplikasi membuat akun dengan `email_confirm=true`, sehingga pengguna langsung dapat login tanpa tautan konfirmasi.
 - Atur minimum panjang password menjadi **12 karakter**. Aplikasi menerima password sepanjang 12–128 karakter.
 
 Nama menu dapat berbeda mengikuti pembaruan Dashboard Supabase.
@@ -118,6 +118,8 @@ Di pengaturan **Authentication → Email / SMTP Settings**, aktifkan **Custom SM
 
 SMTP bawaan Supabase membatasi penerima ke anggota tim project dan memiliki batas kirim yang ketat. Gunakan Custom SMTP untuk pengiriman reset password kepada pengguna. Kredensial SMTP diatur di Supabase; tidak perlu menambahkannya ke `.env` aplikasi atau Vercel. Lihat [panduan Custom SMTP Supabase](https://supabase.com/docs/guides/auth/auth-smtp).
 
+Pembaruan dari versi yang sudah menerapkan ketiga migrasi tidak memerlukan SQL tambahan untuk pendaftaran mandiri; deploy kode terbaru dengan konfigurasi Supabase yang sama.
+
 ## 5. Buat akun administrator
 
 Tambahkan nilai berikut ke `.env` lokal, lalu ganti contoh dengan nama, email baru, dan password unik milik Anda:
@@ -148,7 +150,7 @@ Pastikan `.env` lokal masih memakai `APP_URL=http://localhost:5173`, lalu jalank
 npm run dev
 ```
 
-Buka `http://localhost:5173`, masuk dengan akun admin, lalu buka `http://localhost:5173/#admin`. Uji pembuatan akun melalui **Tambah pengguna**, login pengguna biasa, penolakan pendaftaran publik, dan lupa password.
+Buka `http://localhost:5173`, masuk dengan akun admin, lalu buka `http://localhost:5173/#admin`. Uji **Daftar akun** dari halaman login: akun harus langsung aktif dan dapat login tanpa persetujuan admin atau email konfirmasi. Uji juga **Tambah pengguna**, penolakan akses admin bagi pengguna biasa, dan lupa password.
 
 Untuk memeriksa hasil build lokal, hentikan server dev dengan `Ctrl+C`, lalu jalankan:
 
@@ -219,7 +221,7 @@ Preview Vercel membutuhkan `APP_URL` khusus yang cocok dengan domain preview, em
 - [ ] Dalam browser tanpa sesi, `https://DOMAIN_ANDA/api/auth/me` mengembalikan JSON `{"user":null}`, bukan halaman HTML atau 404. Ini hanya pemeriksaan awal routing, bukan bukti migrasi database lengkap.
 - [ ] Admin dapat login dan membuka `/#admin`; filter peran/status, urutan daftar, pagination, dan tombol muat ulang bekerja.
 - [ ] Tambah pengguna memerlukan konfirmasi password; penghapusan memerlukan pengetikan email. Akun sendiri/admin aktif terakhir tetap dilindungi.
-- [ ] Admin dapat membuat pengguna melalui **Tambah pengguna**; akun tersebut dapat login. Pendaftaran publik melalui UI/API aplikasi maupun Supabase langsung ditolak.
+- [ ] Pengguna dapat mendaftar melalui **Daftar akun** (`/#register`) dan langsung login sebagai pengguna biasa. Email duplikat ditolak. Admin tetap dapat memakai **Tambah pengguna**; pendaftaran langsung ke Supabase tetap ditolak.
 - [ ] Alur lupa password mengirim email ke domain production dan password baru dapat digunakan.
 - [ ] Pengguna biasa tidak dapat membuka fungsi admin.
 - [ ] Profil anak, progres, jurnal, dan foto tersinkron ketika login dengan akun yang sama pada perangkat kedua.

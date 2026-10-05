@@ -23,7 +23,7 @@ Aplikasi pendamping 100 eksperimen sains berbahasa Indonesia. Akun, password, ko
 
    Migrasi menambahkan tabel internal dengan RLS, fungsi pencarian pengguna dan rate limit yang hanya dapat dipanggil service role, izin sesi aplikasi, serta trigger proteksi admin terakhir. Akun tetap berada di `auth.users` yang dikelola Supabase; tidak ada tabel password aplikasi.
 
-3. Di **Authentication → Providers / Sign In**, aktifkan Email. Nonaktifkan **Allow new users to sign up** di pengaturan Auth. Pembuatan akun hanya melalui Admin API oleh administrator; konfirmasi email lama tetap didukung. Atur minimum panjang password Supabase ke **12** agar batas yang sama berlaku juga pada request langsung ke Supabase.
+3. Di **Authentication → Providers / Sign In**, aktifkan Email. Nonaktifkan **Allow new users to sign up** di pengaturan Auth. Pendaftaran mandiri tersedia melalui API aplikasi yang memakai Admin API di server untuk membuat akun biasa langsung aktif. Pengaturan ini tetap dimatikan agar pendaftaran langsung ke Supabase tidak melewati validasi dan rate limit aplikasi; konfirmasi email akun lama tetap didukung. Atur minimum panjang password Supabase ke **12** agar batas yang sama berlaku juga pada request langsung ke Supabase.
 
 4. Di **Authentication → URL Configuration**, atur **Site URL** sama dengan `APP_URL`, tanpa path/hash. Tambahkan origin lokal dan domain deployment ke **Redirect URLs**. Untuk production gunakan HTTPS. Preview Vercel membutuhkan `APP_URL` dan Redirect URL yang sesuai domain preview.
 
@@ -95,7 +95,7 @@ npm start
 
 ## Akun dan admin
 
-Halaman `/#login`, `/#forgot-password`, `/#reset-password`, dan `/#admin` tersedia. Pendaftaran publik ditutup: `/#register` diarahkan ke login dengan petunjuk menghubungi admin, dan `/api/auth/register` selalu ditolak. Admin dapat mencari pengguna dengan pagination, menyaring peran/status, mengurutkan berdasarkan nama atau waktu pendaftaran, membuat akun, mengubah nama/email/peran, serta menonaktifkan/mengaktifkan akun. Statistik menunjukkan seluruh akun (total, aktif, nonaktif, admin aktif), tidak hanya hasil filter. Tombol **Muat ulang** mempertahankan filter dan **Reset filter** mengembalikan tampilan awal. Halaman otomatis disesuaikan jika hasil pencarian berkurang. Akun yang dibuat admin langsung terkonfirmasi; admin bertanggung jawab menyerahkan password awal kepada pemilik akun.
+Halaman `/#register`, `/#login`, `/#forgot-password`, `/#reset-password`, dan `/#admin` tersedia. Pengguna dapat memilih **Daftar akun** dari login, mengisi nama, email, password 12–128 karakter, dan konfirmasi password. `POST /api/auth/register` membuat akun dengan `app_metadata.gkl_role=user` dan `email_confirm=true`, sehingga langsung aktif tanpa persetujuan admin atau klik tautan email. Setelah berhasil, pengguna diarahkan ke login dengan email terisi. Email sudah dipakai ditolak tanpa mengubah akun lama. Endpoint memvalidasi origin, membatasi percobaan per IP/email, dan mengabaikan peran/metadata/status dari browser. Admin dapat mencari pengguna dengan pagination, menyaring peran/status, mengurutkan berdasarkan nama atau waktu pendaftaran, membuat akun, mengubah nama/email/peran, serta menonaktifkan/mengaktifkan akun. Statistik menunjukkan seluruh akun (total, aktif, nonaktif, admin aktif), tidak hanya hasil filter. Tombol **Muat ulang** mempertahankan filter dan **Reset filter** mengembalikan tampilan awal. Halaman otomatis disesuaikan jika hasil pencarian berkurang. Akun yang dibuat admin langsung terkonfirmasi; admin bertanggung jawab menyerahkan password awal kepada pemilik akun.
 
 Form **Tambah pengguna** menyediakan konfirmasi password, tombol lihat/sembunyikan, dan petunjuk panjang password. Form tetap terbuka dengan data yang diisi jika terjadi error seperti email duplikat. Penghapusan memerlukan pengetikan email akun; API juga memvalidasi `confirmEmail`. Peran/status akun sendiri dan admin aktif terakhir dilindungi di form maupun backend.
 
@@ -105,13 +105,17 @@ Peran aplikasi dibaca dari **app_metadata.gkl_role** yang hanya dapat diubah ole
 
 Trigger database mencabut izin sesi aplikasi saat password/email/peran/status berubah; akun tidak memperoleh kembali akses dari sesi lama ketika diaktifkan ulang. Supabase mengelola token Auth, dan perubahan izin ini berlaku untuk API aplikasi. Admin tidak dapat menghapus/menonaktifkan/menurunkan peran sendiri. Trigger juga menolak penghapusan admin aktif terakhir, termasuk lewat Supabase Dashboard; buat admin pengganti sebelum menghapusnya. Tabel internal memiliki RLS tanpa akses pengguna biasa, dan RPC hanya diberikan ke service role.
 
+### Pembaruan pendaftaran mandiri
+
+Jika ketiga migrasi di atas sudah diterapkan, cukup deploy kode terbaru; tidak perlu migrasi SQL tambahan. Tetap nonaktifkan **Allow new users to sign up** di Supabase. Backend menggunakan secret/service-role key yang sudah ada untuk membuat akun terkonfirmasi dengan peran `user`. Admin tidak perlu menambahkan atau menyetujui akun tersebut. Akun lama, termasuk yang dinonaktifkan, tidak diubah.
+
 ## Pulihkan admin yang sudah terdaftar
 
 Untuk akun `wahib.chelsea@gmail.com`, jalankan [`supabase/admin/restore-wahib-admin.sql`](supabase/admin/restore-wahib-admin.sql) di SQL Editor project production yang sama dengan Vercel. Script hanya mempromosikan akun yang sudah ada dan terkonfirmasi, mempertahankan password, metadata lain, dan jurnal. Script berhenti jika akun tidak ditemukan, belum terkonfirmasi, atau sedang dinonaktifkan. Email tidak dijadikan pengecualian admin dalam kode aplikasi.
 
-Setelah hasil SQL menunjukkan `role = admin`, keluar dan login kembali di `https://geniuskids-lab.vercel.app`, lalu buka `https://geniuskids-lab.vercel.app/#admin`. Perubahan peran mencabut izin sesi lama. Pembuatan akun dilakukan melalui **Tambah pengguna**.
+Setelah hasil SQL menunjukkan `role = admin`, keluar dan login kembali di `https://geniuskids-lab.vercel.app`, lalu buka `https://geniuskids-lab.vercel.app/#admin`. Perubahan peran mencabut izin sesi lama. Pengguna dapat mendaftar sendiri melalui **Daftar akun**. Admin tetap dapat membuat akun melalui **Tambah pengguna**.
 
-Urutan penerapan: jalankan migrasi tambahan, pulihkan admin, nonaktifkan **Allow new users to sign up** di Supabase, lalu deploy kode terbaru ke Vercel. Push GitHub tidak menjalankan SQL Supabase secara otomatis. Pembuatan akun lewat Dashboard tanpa metadata role juga ditolak oleh trigger; gunakan halaman admin aplikasi atau `npm run admin:create` untuk bootstrap.
+Urutan penerapan: jalankan migrasi tambahan, pulihkan admin, nonaktifkan **Allow new users to sign up** di Supabase, lalu deploy kode terbaru ke Vercel. Push GitHub tidak menjalankan SQL Supabase secara otomatis. Pembuatan akun lewat Dashboard tanpa metadata role juga ditolak oleh trigger; gunakan form daftar aplikasi untuk akun biasa, halaman admin untuk pengelolaan akun, atau `npm run admin:create` untuk bootstrap.
 
 ## Sinkronisasi profil, progres, jurnal, dan foto
 

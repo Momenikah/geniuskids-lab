@@ -45,7 +45,6 @@ export function createHandler({ clients = createClients, env = process.env } = {
       const method = req.method;
       if (!['GET', 'POST', 'PATCH', 'DELETE'].includes(method)) throw new HttpError(405, 'Metode tidak didukung.');
       if (method !== 'GET') checkOrigin(req, env);
-      if (path === '/api/auth/register') throw new HttpError(403, 'Pendaftaran hanya dapat dilakukan oleh administrator. Hubungi admin untuk membuat akun.');
       const body = method === 'GET' ? {} : await readBody(req, path === '/api/family' ? MAX_FAMILY_BYTES + 1024 : 16384);
       const { client, admin } = clients(req, res, env);
       if (path === '/api/auth/me' && method === 'GET') {
@@ -63,7 +62,7 @@ export function createHandler({ clients = createClients, env = process.env } = {
         const result = unwrap(await admin.rpc('gkl_write_family', { ...params, p_revision: body.revision, p_data: data }));
         return reply(result.conflict ? 409 : 200, result.conflict ? { ...result, error: 'Data berubah di perangkat lain. Pilih versi yang ingin disimpan.' } : result);
       }
-      const action = path.match(/^\/api\/auth\/(login|forgot-password|verify|reset-password)$/)?.[1];
+      const action = path.match(/^\/api\/auth\/(register|login|forgot-password|verify|reset-password)$/)?.[1];
       if (action && method === 'POST') {
         const ip = env.VERCEL ? String(req.headers['x-vercel-forwarded-for'] || 'unknown').split(',')[0].trim() : req.socket?.remoteAddress || 'local';
         await rateLimit(admin, `${action}:ip:${ip}`, action === 'login' ? 40 : 20);
@@ -86,6 +85,13 @@ export function createHandler({ clients = createClients, env = process.env } = {
         }
         const address = email(body.email);
         await rateLimit(admin, `${action}:email:${address}`, action === 'forgot-password' ? 3 : 10);
+        if (action === 'register') {
+          // Provision only ordinary, immediately active accounts through the trusted server.
+          // Ignore all client-supplied roles, metadata and account status fields.
+          unwrap(await admin.auth.admin.createUser({ email: address, password: password(body.password),
+            email_confirm: true, user_metadata: { name: name(body.name) }, app_metadata: { gkl_role: 'user' } }));
+          return reply(201, { message: 'Akun berhasil dibuat dan langsung aktif. Silakan masuk ke lab.' });
+        }
         if (action === 'login') {
           if (typeof body.password !== 'string' || !body.password || body.password.length > 128) throw new HttpError(400, 'Password wajib diisi, maksimal 128 karakter.');
           const result = await client.auth.signInWithPassword({ email: address, password: body.password });

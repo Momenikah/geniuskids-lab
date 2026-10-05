@@ -21,13 +21,45 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async ()=>{ if(server) await new Promise(resolve=>server.close(resolve)); if(fake) await fake.close(); });
-test('public registration is blocked including forged admin metadata', async () => {
+test('self-registration creates an active ordinary account without email or admin approval', async () => {
   const result = await request('auth/me'); assert.equal(result.data.user,null); assert.match(result.cache,/no-store/);
-  for (const options of [{}, {origin:'https://evil.example'}, {csrf:false}]) {
-    const blocked=await request('auth/register',{method:'POST',body:{email:'blocked@example.test',name:'Name',password:secret,role:'admin',app_metadata:{gkl_role:'admin'}},...options});
-    assert.equal(blocked.status,403);
+  fake.setConfirmEmail(true);
+  const outboxLength = fake.outbox.length;
+  try {
+    const created = await request('auth/register', {method:'POST', body:{
+      email:' SELF@EXAMPLE.TEST ', name:'  Self Service  ', password:secret,
+      role:'admin', app_metadata:{gkl_role:'admin'}, user_metadata:{gkl_role:'admin'}, email_confirm:false, active:false,
+    }});
+    assert.equal(created.status,201,JSON.stringify(created.data));
+    assert.match(created.data.message,/langsung aktif/);
+    assert.equal(created.data.access_token,undefined);
+    const stored = (await fake.db.query("SELECT * FROM auth.users WHERE email='self@example.test'")).rows[0];
+    assert.deepEqual(stored.raw_app_meta_data,{gkl_role:'user'});
+    assert.deepEqual(stored.raw_user_meta_data,{name:'Self Service'});
+    assert.ok(stored.email_confirmed_at);
+    assert.equal(fake.outbox.length,outboxLength);
+    const loggedIn = await login('self@example.test');
+    assert.equal(loggedIn.status,200);
+    assert.equal(loggedIn.data.user.active,true);
+    assert.equal(loggedIn.data.user.role,'user');
+    assert.equal((await request('auth/me',{cookie:loggedIn.cookie})).data.user.id,stored.id);
+    assert.equal((await request('admin/users',{cookie:loggedIn.cookie})).status,403);
+    const duplicate = await request('auth/register',{method:'POST',body:{email:'SELF@example.test',name:'Replacement',password:'replacement-password'}});
+    assert.equal(duplicate.status,409);
+    assert.equal((await login('self@example.test')).status,200);
+    assert.equal((await fake.db.query('SELECT raw_user_meta_data FROM auth.users WHERE id=$1',[stored.id])).rows[0].raw_user_meta_data.name,'Self Service');
+  } finally { fake.setConfirmEmail(false); }
+});
+test('registration rejects invalid fields and requests without origin protection', async () => {
+  const body={email:'invalid@example.test',name:'Name',password:secret};
+  for (const options of [{origin:'https://evil.example'}, {csrf:false}]) {
+    assert.equal((await request('auth/register',{method:'POST',body,...options})).status,403);
   }
-  assert.equal((await fake.db.query("SELECT id FROM auth.users WHERE email='blocked@example.test'")).rows.length,0);
+  for (const invalid of [{name:''},{name:' '.repeat(3)},{name:'a'.repeat(81)},{email:'invalid'}, {password:'short'}, {password:'x'.repeat(129)}]) {
+    assert.equal((await request('auth/register',{method:'POST',body:{...body,...invalid}})).status,400);
+  }
+  assert.equal((await request('auth/register')).status,404);
+  assert.equal((await fake.db.query("SELECT id FROM auth.users WHERE email='invalid@example.test'")).rows.length,0);
 });
 test('existing family login sets HttpOnly cookies and preserves user role', async () => {
   await fake.createUser({email:'family@example.test',password:secret,user_metadata:{name:'Keluarga Uji'}});
@@ -168,4 +200,17 @@ test('family snapshots are private, versioned, idempotent, and removed with the 
   }
   await fake.db.query('DELETE FROM auth.users WHERE id=$1',[userId]);
   assert.equal((await fake.db.query('SELECT * FROM public.gkl_family_data WHERE user_id=$1',[userId])).rows.length,0);
+});
+
+test('registration rate limits email and IP before creating an account', async () => {
+  const { digest } = await import('../server/security.js');
+  for (const [key, limit, address] of [
+    ['register:email:limited@example.test',10,'limited@example.test'],
+    ['register:ip:127.0.0.1',20,'ip-limited@example.test'],
+  ]) {
+    for(let i=0;i<limit;i++) await fake.db.query('SELECT public.gkl_rate_limit($1,$2)',[digest(key),limit]);
+    const response=await request('auth/register',{method:'POST',body:{email:address,name:'Limited',password:secret}});
+    assert.equal(response.status,429);
+    assert.equal((await fake.db.query('SELECT id FROM auth.users WHERE email=$1',[address])).rows.length,0);
+  }
 });

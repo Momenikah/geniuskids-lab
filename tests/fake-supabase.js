@@ -97,7 +97,7 @@ export async function fakeSupabase({ confirmEmail = false, appUrl = 'http://loca
         const id = path.split('/')[5];
         if (!id && req.method === 'POST') {
           if (await userByEmail(body.email)) return reply(422, { code: 'email_exists', msg: 'exists' });
-          return reply(200, shape(await createUser(body)));
+          return reply(200, shape(await createUser(body, body.email_confirm === true)));
         }
         const target = await userById(id);
         if (!target) return reply(404, { msg: 'User not found' });
